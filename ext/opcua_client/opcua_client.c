@@ -214,7 +214,7 @@ static VALUE rb_connect_username(VALUE self, VALUE v_connectionString, VALUE v_u
     TypedData_Get_Struct(self, struct UninitializedClient, &UA_Client_Type, uclient);
     UA_Client *client = uclient->client;
 
-    UA_StatusCode status = UA_Client_connect_username(client, connectionString, username, password);
+    UA_StatusCode status = UA_Client_connectUsername(client, connectionString, username, password);
 
     if (status == UA_STATUSCODE_GOOD) {
         return Qnil;
