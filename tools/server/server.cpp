@@ -106,7 +106,8 @@ static void addVariables(UA_Server *server) {
     addVariableV2(server, ns5Id, UA_TYPES_BOOLEAN, "bool_a", (UA_Boolean[]){true});
     addVariableV2(server, ns5Id, UA_TYPES_BOOLEAN, "bool_b", (UA_Boolean[]){false});
     addVariableV2(server, ns5Id, UA_TYPES_FLOAT, "float_a", (UA_Float[]){0});
-    addVariableV2(server, ns5Id, UA_TYPES_FLOAT, "float_b", (UA_Float[]){123.222});
+    addVariableV2(server, ns5Id, UA_TYPES_FLOAT, "float_b", (UA_Float[]){-123.222});
+    addVariableV2(server, ns5Id, UA_TYPES_FLOAT, "float_c", (UA_Float[]){123.222});
 
     UA_String string_a = UA_STRING("");
     addVariableV2(server, ns5Id, UA_TYPES_STRING, "string_a", &string_a);
