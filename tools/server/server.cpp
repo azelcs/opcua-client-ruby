@@ -29,6 +29,9 @@ static UA_NodeId addVariableUnder(UA_Server *server, UA_Int16 nsId, int type, co
     } else if (type == UA_TYPES_BOOLEAN) {
         UA_Boolean initialValue = *(UA_Boolean*)defaultValue;
         UA_Variant_setScalar(&attr.value, &initialValue, &UA_TYPES[type]);
+    } else if (type == UA_TYPES_FLOAT) {
+        UA_Float initialValue = *(UA_Float*)defaultValue;
+        UA_Variant_setScalar(&attr.value, &initialValue, &UA_TYPES[type]);
     } else if (type == UA_TYPES_STRING) {
         UA_String *initialValue = (UA_String*)defaultValue;
         UA_Variant_setScalar(&attr.value, initialValue, &UA_TYPES[type]);
@@ -72,10 +75,6 @@ static void addVariableV2(UA_Server *server, UA_Int16 nsId, int type, const char
     UA_NodeId parentNode = addVariable(server, nsId, type, desc, displayName, nodeId, varName, defaultValue);
 }
 
-static void addVariableInt(UA_Server *server, UA_Int16 nsId, int type, const char *variable, UA_Int32 defaultValue = 0) {
-    addVariableV2(server, nsId, type, variable, &defaultValue);
-}
-
 static void addVariableStr(UA_Server *server, UA_Int16 nsId, int type, const char *variable, UA_String defaultValue = UA_STRING("")) {
     addVariableV2(server, nsId, type, variable, &defaultValue);
 }
@@ -92,22 +91,28 @@ static void addVariables(UA_Server *server) {
     UA_Int16 ns4Id = UA_Server_addNamespace(server, "ns4"); // id=4
     UA_Int16 ns5Id = UA_Server_addNamespace(server, "ns5"); // id=5
 
-    addVariableInt(server, ns5Id, UA_TYPES_INT16, "int16_a");
-    addVariableInt(server, ns5Id, UA_TYPES_INT16, "int16_b", -100);
-    addVariableInt(server, ns5Id, UA_TYPES_INT16, "int16_c", 100);
-    addVariableInt(server, ns5Id, UA_TYPES_INT32, "int32_a");
-    addVariableInt(server, ns5Id, UA_TYPES_INT32, "int32_b", -1000);
-    addVariableInt(server, ns5Id, UA_TYPES_INT32, "int32_c", 1000);
-    addVariableInt(server, ns5Id, UA_TYPES_UINT16, "uint16_a");
-    addVariableInt(server, ns5Id, UA_TYPES_UINT16, "uint16_b", 100);
-    addVariableInt(server, ns5Id, UA_TYPES_UINT16, "uint16_c", 200);
-    addVariableInt(server, ns5Id, UA_TYPES_UINT32, "uint32_a");
-    addVariableInt(server, ns5Id, UA_TYPES_UINT32, "uint32_b", 1000);
-    addVariableInt(server, ns5Id, UA_TYPES_UINT32, "uint32_c", 2000);
-    addVariableInt(server, ns5Id, UA_TYPES_BOOLEAN, "bool_a", true);
-    addVariableInt(server, ns5Id, UA_TYPES_BOOLEAN, "bool_b", false);
-    addVariableStr(server, ns5Id, UA_TYPES_STRING, "string_a");
-    addVariableStr(server, ns5Id, UA_TYPES_STRING, "string_b", UA_STRING("Example string"));
+    addVariableV2(server, ns5Id, UA_TYPES_INT16, "int16_a", (UA_Int16[]){0});
+    addVariableV2(server, ns5Id, UA_TYPES_INT16, "int16_b", (UA_Int16[]){-100});
+    addVariableV2(server, ns5Id, UA_TYPES_INT16, "int16_c", (UA_Int16[]){100});
+    addVariableV2(server, ns5Id, UA_TYPES_INT32, "int32_a", (UA_Int32[]){0});
+    addVariableV2(server, ns5Id, UA_TYPES_INT32, "int32_b", (UA_Int32[]){-1000});
+    addVariableV2(server, ns5Id, UA_TYPES_INT32, "int32_c", (UA_Int32[]){1000});
+    addVariableV2(server, ns5Id, UA_TYPES_UINT16, "uint16_a", (UA_UInt16[]){0});
+    addVariableV2(server, ns5Id, UA_TYPES_UINT16, "uint16_b", (UA_UInt16[]){100});
+    addVariableV2(server, ns5Id, UA_TYPES_UINT16, "uint16_c", (UA_UInt16[]){200});
+    addVariableV2(server, ns5Id, UA_TYPES_UINT32, "uint32_a", (UA_UInt32[]){0});
+    addVariableV2(server, ns5Id, UA_TYPES_UINT32, "uint32_b", (UA_UInt32[]){1000});
+    addVariableV2(server, ns5Id, UA_TYPES_UINT32, "uint32_c", (UA_UInt32[]){2000});
+    addVariableV2(server, ns5Id, UA_TYPES_BOOLEAN, "bool_a", (UA_Boolean[]){true});
+    addVariableV2(server, ns5Id, UA_TYPES_BOOLEAN, "bool_b", (UA_Boolean[]){false});
+    addVariableV2(server, ns5Id, UA_TYPES_FLOAT, "float_a", (UA_Float[]){0});
+    addVariableV2(server, ns5Id, UA_TYPES_FLOAT, "float_b", (UA_Float[]){123.222});
+
+    UA_String string_a = UA_STRING("");
+    addVariableV2(server, ns5Id, UA_TYPES_STRING, "string_a", &string_a);
+
+    UA_String string_b = UA_STRING("Example text");
+    addVariableV2(server, ns5Id, UA_TYPES_STRING, "string_b", &string_b);
 }
 
 int main(void) {
