@@ -131,7 +131,7 @@ bundle
 
 ```bash
 make -C tools/server/ clean all # clean+all
-tools/server/opcua-test-server # run
+tools/server/opcua-server # run
 ```
 
 ### Try out changes

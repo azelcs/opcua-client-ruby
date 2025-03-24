@@ -47,7 +47,7 @@ RSpec.describe OPCUAClient::Client do
     end
 
     around(:each) do |example|
-      server_pid = spawn('tools/server/opcua-test-server') # Launch server
+      server_pid = spawn('tools/server/opcua-server') # Launch server
       example.run
       Process.kill('TERM', server_pid) # Stop server
     end
