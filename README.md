@@ -143,7 +143,7 @@ pry> client = OPCUAClient::Client.new
 pry> client.connect("opc.tcp://127.0.0.1:4840")
 pry> client.read_uint32(5, "uint32b")
 pry> client.read_uint16(5, "uint16b")
-pry> client.read_bool(5, "bool_true")
+pry> client.read_bool(5, "bool_a")
 ```
 
 ### Test it

@@ -75,10 +75,6 @@ static void addVariableV2(UA_Server *server, UA_Int16 nsId, int type, const char
     UA_NodeId parentNode = addVariable(server, nsId, type, desc, displayName, nodeId, varName, defaultValue);
 }
 
-static void addVariableStr(UA_Server *server, UA_Int16 nsId, int type, const char *variable, UA_String defaultValue = UA_STRING("")) {
-    addVariableV2(server, nsId, type, variable, &defaultValue);
-}
-
 UA_Boolean running = true;
 static void signalHandler(int signum) {
     UA_LOG_INFO(UA_Log_Stdout, UA_LOGCATEGORY_SERVER, "Signal received: %i", signum);
