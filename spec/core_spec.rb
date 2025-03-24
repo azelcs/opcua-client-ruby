@@ -28,8 +28,15 @@ RSpec.describe OPCUAClient::Client do
 
     it 'can read' do
       OPCUAClient.start(URL) do |client|
-        # opcua server default values
-        ec
+        # reads tools/server/server.cpp default values
+        expect(client.read_int16(NS, 'int16_b')).to eq(-100)
+        expect(client.read_uint16(NS, 'uint16_b')).to eq(100)
+        expect(client.read_int32(NS, 'int32_b')).to eq(-1000)
+        expect(client.read_uint32(NS, 'uint32_b')).to eq(1000)
+        expect(client.read_float(NS, 'float_b').round(3)).to eq(123.222)
+        expect(client.read_boolean(NS, 'bool_a')).to eq(true)
+        expect(client.read_boolean(NS, 'bool_b')).to eq(false)
+        expect(client.read_string(NS, 'string_b')).to eq('Example text')
       end
     end
   end
