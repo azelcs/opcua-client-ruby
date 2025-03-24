@@ -29,6 +29,9 @@ static UA_NodeId addVariableUnder(UA_Server *server, UA_Int16 nsId, int type, co
     } else if (type == UA_TYPES_BOOLEAN) {
         UA_Boolean initialValue = *(UA_Boolean*)defaultValue;
         UA_Variant_setScalar(&attr.value, &initialValue, &UA_TYPES[type]);
+    } else if (type == UA_TYPES_STRING) {
+        UA_String *initialValue = (UA_String*)defaultValue;
+        UA_Variant_setScalar(&attr.value, initialValue, &UA_TYPES[type]);
     } else {
         throw "type not supported";
     }
@@ -52,7 +55,7 @@ static UA_NodeId addVariable(UA_Server *server, UA_Int16 nsId, int type, const c
     return addVariableUnder(server, nsId, type, desc, name, nodeIdString, qnString, parentNodeId, defaultValue);
 }
 
-static void addVariableV2(UA_Server *server, UA_Int16 nsId, int type, const char *variable, UA_Int32 defaultValue = 0) {
+static void addVariableV2(UA_Server *server, UA_Int16 nsId, int type, const char *variable, void *defaultValue) {
     char* varName = newString();
     sprintf(varName, "%s", variable);
 
@@ -66,7 +69,15 @@ static void addVariableV2(UA_Server *server, UA_Int16 nsId, int type, const char
     char* nodeId = newString();
     sprintf(nodeId, "%s", varName);
 
-    UA_NodeId parentNode = addVariable(server, nsId, type, desc, displayName, nodeId, varName, &defaultValue);
+    UA_NodeId parentNode = addVariable(server, nsId, type, desc, displayName, nodeId, varName, defaultValue);
+}
+
+static void addVariableInt(UA_Server *server, UA_Int16 nsId, int type, const char *variable, UA_Int32 defaultValue = 0) {
+    addVariableV2(server, nsId, type, variable, &defaultValue);
+}
+
+static void addVariableStr(UA_Server *server, UA_Int16 nsId, int type, const char *variable, UA_String defaultValue = UA_STRING("")) {
+    addVariableV2(server, nsId, type, variable, &defaultValue);
 }
 
 UA_Boolean running = true;
@@ -81,14 +92,22 @@ static void addVariables(UA_Server *server) {
     UA_Int16 ns4Id = UA_Server_addNamespace(server, "ns4"); // id=4
     UA_Int16 ns5Id = UA_Server_addNamespace(server, "ns5"); // id=5
 
-    addVariableV2(server, ns5Id, UA_TYPES_UINT32, "uint32a");
-    addVariableV2(server, ns5Id, UA_TYPES_UINT32, "uint32b", 1000);
-    addVariableV2(server, ns5Id, UA_TYPES_UINT32, "uint32c", 2000);
-    addVariableV2(server, ns5Id, UA_TYPES_UINT16, "uint16a");
-    addVariableV2(server, ns5Id, UA_TYPES_UINT16, "uint16b", 100);
-    addVariableV2(server, ns5Id, UA_TYPES_UINT16, "uint16c", 200);
-    addVariableV2(server, ns5Id, UA_TYPES_BOOLEAN, "true_var", true);
-    addVariableV2(server, ns5Id, UA_TYPES_BOOLEAN, "false_var", false);
+    addVariableInt(server, ns5Id, UA_TYPES_INT16, "int16_a");
+    addVariableInt(server, ns5Id, UA_TYPES_INT16, "int16_b", -100);
+    addVariableInt(server, ns5Id, UA_TYPES_INT16, "int16_c", 100);
+    addVariableInt(server, ns5Id, UA_TYPES_INT32, "int32_a");
+    addVariableInt(server, ns5Id, UA_TYPES_INT32, "int32_b", -1000);
+    addVariableInt(server, ns5Id, UA_TYPES_INT32, "int32_c", 1000);
+    addVariableInt(server, ns5Id, UA_TYPES_UINT16, "uint16_a");
+    addVariableInt(server, ns5Id, UA_TYPES_UINT16, "uint16_b", 100);
+    addVariableInt(server, ns5Id, UA_TYPES_UINT16, "uint16_c", 200);
+    addVariableInt(server, ns5Id, UA_TYPES_UINT32, "uint32_a");
+    addVariableInt(server, ns5Id, UA_TYPES_UINT32, "uint32_b", 1000);
+    addVariableInt(server, ns5Id, UA_TYPES_UINT32, "uint32_c", 2000);
+    addVariableInt(server, ns5Id, UA_TYPES_BOOLEAN, "bool_a", true);
+    addVariableInt(server, ns5Id, UA_TYPES_BOOLEAN, "bool_b", false);
+    addVariableStr(server, ns5Id, UA_TYPES_STRING, "string_a");
+    addVariableStr(server, ns5Id, UA_TYPES_STRING, "string_b", UA_STRING("Example string"));
 }
 
 int main(void) {
