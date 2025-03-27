@@ -75,6 +75,22 @@ static void addVariableV2(UA_Server *server, UA_Int16 nsId, int type, const char
     UA_NodeId parentNode = addVariable(server, nsId, type, desc, displayName, nodeId, varName, defaultValue);
 }
 
+static void addVariableInt(UA_Server *server, UA_Int16 nsId, int type, const char *variable, UA_Int32 defaultValue) {
+    addVariableV2(server, nsId, type, variable, &defaultValue);
+}
+
+static void addVariableBool(UA_Server *server, UA_Int16 nsId, int type, const char *variable, UA_Boolean defaultValue) {
+    addVariableV2(server, nsId, type, variable, &defaultValue);
+}
+
+static void addVariableFloat(UA_Server *server, UA_Int16 nsId, int type, const char *variable, UA_Float defaultValue = 0) {
+    addVariableV2(server, nsId, type, variable, &defaultValue);
+}
+
+static void addVariableString(UA_Server *server, UA_Int16 nsId, int type, const char *variable, UA_String defaultValue = UA_STRING("")) {
+    addVariableV2(server, nsId, type, variable, &defaultValue);
+}
+
 UA_Boolean running = true;
 static void signalHandler(int signum) {
     UA_LOG_INFO(UA_Log_Stdout, UA_LOGCATEGORY_SERVER, "Signal received: %i", signum);
@@ -87,29 +103,25 @@ static void addVariables(UA_Server *server) {
     UA_Int16 ns4Id = UA_Server_addNamespace(server, "ns4"); // id=4
     UA_Int16 ns5Id = UA_Server_addNamespace(server, "ns5"); // id=5
 
-    addVariableV2(server, ns5Id, UA_TYPES_INT16, "int16_a", (UA_Int16[]){0});
-    addVariableV2(server, ns5Id, UA_TYPES_INT16, "int16_b", (UA_Int16[]){-100});
-    addVariableV2(server, ns5Id, UA_TYPES_INT16, "int16_c", (UA_Int16[]){100});
-    addVariableV2(server, ns5Id, UA_TYPES_INT32, "int32_a", (UA_Int32[]){0});
-    addVariableV2(server, ns5Id, UA_TYPES_INT32, "int32_b", (UA_Int32[]){-1000});
-    addVariableV2(server, ns5Id, UA_TYPES_INT32, "int32_c", (UA_Int32[]){1000});
-    addVariableV2(server, ns5Id, UA_TYPES_UINT16, "uint16_a", (UA_UInt16[]){0});
-    addVariableV2(server, ns5Id, UA_TYPES_UINT16, "uint16_b", (UA_UInt16[]){100});
-    addVariableV2(server, ns5Id, UA_TYPES_UINT16, "uint16_c", (UA_UInt16[]){200});
-    addVariableV2(server, ns5Id, UA_TYPES_UINT32, "uint32_a", (UA_UInt32[]){0});
-    addVariableV2(server, ns5Id, UA_TYPES_UINT32, "uint32_b", (UA_UInt32[]){1000});
-    addVariableV2(server, ns5Id, UA_TYPES_UINT32, "uint32_c", (UA_UInt32[]){2000});
-    addVariableV2(server, ns5Id, UA_TYPES_BOOLEAN, "bool_a", (UA_Boolean[]){true});
-    addVariableV2(server, ns5Id, UA_TYPES_BOOLEAN, "bool_b", (UA_Boolean[]){false});
-    addVariableV2(server, ns5Id, UA_TYPES_FLOAT, "float_a", (UA_Float[]){0});
-    addVariableV2(server, ns5Id, UA_TYPES_FLOAT, "float_b", (UA_Float[]){-123.222});
-    addVariableV2(server, ns5Id, UA_TYPES_FLOAT, "float_c", (UA_Float[]){123.222});
-
-    UA_String string_a = UA_STRING("");
-    addVariableV2(server, ns5Id, UA_TYPES_STRING, "string_a", &string_a);
-
-    UA_String string_b = UA_STRING("Example text");
-    addVariableV2(server, ns5Id, UA_TYPES_STRING, "string_b", &string_b);
+    addVariableInt(server, ns5Id, UA_TYPES_INT16, "int16_a", 0);
+    addVariableInt(server, ns5Id, UA_TYPES_INT16, "int16_b", -100);
+    addVariableInt(server, ns5Id, UA_TYPES_INT16, "int16_c", 100);
+    addVariableInt(server, ns5Id, UA_TYPES_INT32, "int32_a", 0);
+    addVariableInt(server, ns5Id, UA_TYPES_INT32, "int32_b", -1000);
+    addVariableInt(server, ns5Id, UA_TYPES_INT32, "int32_c", 1000);
+    addVariableInt(server, ns5Id, UA_TYPES_UINT16, "uint16_a", 0);
+    addVariableInt(server, ns5Id, UA_TYPES_UINT16, "uint16_b", 100);
+    addVariableInt(server, ns5Id, UA_TYPES_UINT16, "uint16_c", 200);
+    addVariableInt(server, ns5Id, UA_TYPES_UINT32, "uint32_a", 0);
+    addVariableInt(server, ns5Id, UA_TYPES_UINT32, "uint32_b", 1000);
+    addVariableInt(server, ns5Id, UA_TYPES_UINT32, "uint32_c", 2000);
+    addVariableBool(server, ns5Id, UA_TYPES_BOOLEAN, "bool_a", true);
+    addVariableBool(server, ns5Id, UA_TYPES_BOOLEAN, "bool_b", false);
+    addVariableFloat(server, ns5Id, UA_TYPES_FLOAT, "float_a", 0);
+    addVariableFloat(server, ns5Id, UA_TYPES_FLOAT, "float_b", -123.222);
+    addVariableFloat(server, ns5Id, UA_TYPES_FLOAT, "float_c", 123.222);
+    addVariableString(server, ns5Id, UA_TYPES_STRING, "string_a", UA_STRING(""));
+    addVariableString(server, ns5Id, UA_TYPES_STRING, "string_b", UA_STRING("Example text"));
 }
 
 int main(void) {
