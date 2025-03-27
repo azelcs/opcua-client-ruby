@@ -47,7 +47,9 @@ RSpec.describe OPCUAClient::Client do
     end
 
     around(:each) do |example|
-      server_pid = spawn('tools/server/opcua-server') # Launch server
+      is_win = RUBY_PLATFORM =~ /mswin|mingw|cygwin/
+      executable = is_win ? 'opcua-server.exe' : 'opcua-server'
+      server_pid = spawn(File.join('tools', 'server', executable)) # Launch server
       example.run
       Process.kill('TERM', server_pid) # Stop server
     end
