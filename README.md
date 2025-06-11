@@ -59,6 +59,7 @@ All methods raise OPCUAClient::Error if unsuccessful.
 * ```client.read_int32(Fixnum ns, String name) => Fixnum```
 * ```client.read_uint32(Fixnum ns, String name) => Fixnum```
 * ```client.read_float(Fixnum ns, String name) => Float```
+* ```client.read_double(Fixnum ns, String name) => Double```
 * ```client.read_boolean(Fixnum ns, String name) => true/false```
 * ```client.read_string(Fixnum ns, String name) => String```
 * ```client.multi_read(Fixnum ns, Array[String] names) => Array values```
@@ -67,6 +68,7 @@ All methods raise OPCUAClient::Error if unsuccessful.
 * ```client.write_int32(Fixnum ns, String name, Fixnum value)```
 * ```client.write_uint32(Fixnum ns, String name, Fixnum value)```
 * ```client.write_float(Fixnum ns, String name, Float value)```
+* ```client.write_double(Fixnum ns, String name, Double value)```
 * ```client.write_boolean(Fixnum ns, String name, bool value)```
 * ```client.write_string(Fixnum ns, String name, String value)```
 * ```client.multi_write_int16(Fixnum ns, Array[String] names, Array[Fixnum] values)```
@@ -74,6 +76,7 @@ All methods raise OPCUAClient::Error if unsuccessful.
 * ```client.multi_write_int32(Fixnum ns, Array[String] names, Array[Fixnum] values)```
 * ```client.multi_write_uint32(Fixnum ns, Array[String] names, Array[Fixnum] values)```
 * ```client.multi_write_float(Fixnum ns, Array[String] names, Array[Float] values)```
+* ```client.multi_write_double(Fixnum ns, Array[String] names, Array[Double] values)```
 * ```client.multi_write_boolean(Fixnum ns, Array[String] names, Array[bool] values)```
 * ```client.multi_write_string(Fixnum ns, Array[String] names, Array[String] values)```
 

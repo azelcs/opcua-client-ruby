@@ -422,6 +422,9 @@ static VALUE rb_readUaValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames) {
             } else if (UA_Variant_hasScalarType(&readValues[i], &UA_TYPES[UA_TYPES_FLOAT])) {
                 UA_Float val = *(UA_Float*)readValues[i].data;
                 rubyVal = DBL2NUM(val);
+            } else if (UA_Variant_hasScalarType(&readValues[i], &UA_TYPES[UA_TYPES_DOUBLE])) {
+                UA_Float val = *(UA_Double*)readValues[i].data;
+                rubyVal = DBL2NUM(val);
             } else if (UA_Variant_hasScalarType(&readValues[i], &UA_TYPES[UA_TYPES_STRING])) {
                 UA_String val = *(UA_String*)readValues[i].data;
                 rubyVal = rb_utf8_str_new(val.data, val.length);
@@ -520,6 +523,12 @@ static VALUE rb_writeUaValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames, VAL
             values[i].data = UA_malloc(sizeof(UA_Float));
             *(UA_Float*)values[i].data = newValue;
             values[i].type = &UA_TYPES[uaType];
+        } else if (uaType == UA_TYPES_DOUBLE) {
+            Check_Type(v_newValue, T_DOUBLE);
+            UA_Double newValue = NUM2DBL(v_newValue);
+            values[i].data = UA_malloc(sizeof(UA_Double));
+            *(UA_Float*)values[i].data = newValue;
+            values[i].type = &UA_TYPES[uaType];
         } else if (uaType == UA_TYPES_BOOLEAN) {
             if (RB_TYPE_P(v_newValue, T_TRUE) != 1 && RB_TYPE_P(v_newValue, T_FALSE) != 1) {
                 return raise_invalid_arguments_error();
@@ -612,6 +621,11 @@ static VALUE rb_writeUaValue(VALUE self, VALUE v_nsIndex, VALUE v_name, VALUE v_
         value.data = UA_malloc(sizeof(UA_Float));
         *(UA_Float*)value.data = newValue;
         value.type = &UA_TYPES[UA_TYPES_FLOAT];
+    } else if (uaType == UA_TYPES_DOUBLE) {
+        UA_Double newValue = NUM2DBL(v_newValue);
+        value.data = UA_malloc(sizeof(UA_Double));
+        *(UA_Double*)value.data = newValue;
+        value.type = &UA_TYPES[UA_TYPES_DOUBLE];
     } else if (uaType == UA_TYPES_BOOLEAN) {
         UA_Boolean newValue = RTEST(v_newValue);
         value.data = UA_malloc(sizeof(UA_Boolean));
@@ -690,6 +704,14 @@ static VALUE rb_writeFloatValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames, 
     return rb_writeUaValues(self, v_nsIndex, v_aryNames, v_aryNewValues, UA_TYPES_FLOAT);
 }
 
+static VALUE rb_writeDoubleValue(VALUE self, VALUE v_nsIndex, VALUE v_name, VALUE v_newValue) {
+    return rb_writeUaValue(self, v_nsIndex, v_name, v_newValue, UA_TYPES_DOUBLE);
+}
+
+static VALUE rb_writeDoubleValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames, VALUE v_aryNewValues) {
+    return rb_writeUaValues(self, v_nsIndex, v_aryNames, v_aryNewValues, UA_TYPES_DOUBLE);
+}
+
 static VALUE rb_writeStringValue(VALUE self, VALUE v_nsIndex, VALUE v_name, VALUE v_newValue) {
     return rb_writeUaValue(self, v_nsIndex, v_name, v_newValue, UA_TYPES_STRING);
 }
@@ -748,6 +770,9 @@ static VALUE rb_readUaValue(VALUE self, VALUE v_nsIndex, VALUE v_name, int type)
     } else if (type == UA_TYPES_FLOAT && UA_Variant_hasScalarType(&value, &UA_TYPES[UA_TYPES_FLOAT])) {
         UA_Float val =*(UA_Float*)value.data;
         result = DBL2NUM(val);
+    } else if (type == UA_TYPES_DOUBLE && UA_Variant_hasScalarType(&value, &UA_TYPES[UA_TYPES_DOUBLE])) {
+        UA_Double val =*(UA_Double*)value.data;
+        result = DBL2NUM(val);
     } else if (type == UA_TYPES_STRING && UA_Variant_hasScalarType(&value, &UA_TYPES[UA_TYPES_STRING])) {
         UA_String val =*(UA_String*)value.data;
         result = rb_utf8_str_new(val.data, val.length);
@@ -784,6 +809,10 @@ static VALUE rb_readBooleanValue(VALUE self, VALUE v_nsIndex, VALUE v_name) {
 
 static VALUE rb_readFloatValue(VALUE self, VALUE v_nsIndex, VALUE v_name) {
     return rb_readUaValue(self, v_nsIndex, v_name, UA_TYPES_FLOAT);
+}
+
+static VALUE rb_readDoubleValue(VALUE self, VALUE v_nsIndex, VALUE v_name) {
+    return rb_readUaValue(self, v_nsIndex, v_name, UA_TYPES_DOUBLE);
 }
 
 static VALUE rb_readStringValue(VALUE self, VALUE v_nsIndex, VALUE v_name) {
@@ -876,6 +905,7 @@ void Init_opcua_client()
     rb_define_method(cClient, "read_int32", rb_readInt32Value, 2);
     rb_define_method(cClient, "read_uint32", rb_readUInt32Value, 2);
     rb_define_method(cClient, "read_float", rb_readFloatValue, 2);
+    rb_define_method(cClient, "read_double", rb_readDoubleValue, 2);
     rb_define_method(cClient, "read_boolean", rb_readBooleanValue, 2);
     rb_define_method(cClient, "read_bool", rb_readBooleanValue, 2);
     rb_define_method(cClient, "read_string", rb_readStringValue, 2);
@@ -885,6 +915,7 @@ void Init_opcua_client()
     rb_define_method(cClient, "write_int32", rb_writeInt32Value, 3);
     rb_define_method(cClient, "write_uint32", rb_writeUInt32Value, 3);
     rb_define_method(cClient, "write_float", rb_writeFloatValue, 3);
+    rb_define_method(cClient, "write_double", rb_writeDoubleValue, 3);
     rb_define_method(cClient, "write_boolean", rb_writeBooleanValue, 3);
     rb_define_method(cClient, "write_bool", rb_writeBooleanValue, 3);
     rb_define_method(cClient, "write_string", rb_writeStringValue, 3);
@@ -894,6 +925,7 @@ void Init_opcua_client()
     rb_define_method(cClient, "multi_write_int32", rb_writeInt32Values, 3);
     rb_define_method(cClient, "multi_write_uint32", rb_writeUInt32Values, 3);
     rb_define_method(cClient, "multi_write_float", rb_writeFloatValues, 3);
+    rb_define_method(cClient, "multi_write_double", rb_writeDoubleValues, 3);
     rb_define_method(cClient, "multi_write_boolean", rb_writeBooleanValues, 3);
     rb_define_method(cClient, "multi_write_bool", rb_writeBooleanValues, 3);
     rb_define_method(cClient, "multi_write_string", rb_writeStringValues, 3);
