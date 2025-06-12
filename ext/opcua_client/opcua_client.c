@@ -638,7 +638,7 @@ static VALUE rb_writeUaValue(VALUE self, VALUE v_nsIndex, VALUE v_name, VALUE v_
         value.type = &UA_TYPES[UA_TYPES_STRING];
     } else if (uaType == UA_TYPES_BYTE) {
         Check_Type(v_newValue, T_FIXNUM);
-        UA_Byte newValue = NUM2BYTE(v_newValue);
+        UA_Byte newValue = (UA_Byte)NUM2UINT(v_newValue);
         value.data = UA_malloc(sizeof(UA_Byte));
         *(UA_Byte*)value.data = newValue;
         value.type = &UA_TYPES[UA_TYPES_BYTE];
