@@ -730,10 +730,6 @@ static VALUE rb_writeByteValue(VALUE self, VALUE v_nsIndex, VALUE v_name, VALUE 
     return rb_writeUaValue(self, v_nsIndex, v_name, v_newValue, UA_TYPES_BYTE);
 }
 
-static VALUE rb_writeByteValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames, VALUE v_aryNewValues) {
-    return rb_writeUaValues(self, v_nsIndex, v_aryNames, v_aryNewValues, UA_TYPES_BYTE);
-}
-
 static VALUE rb_readUaValue(VALUE self, VALUE v_nsIndex, VALUE v_name, int type) {
     if (RB_TYPE_P(v_name, T_STRING) != 1) {
         return raise_invalid_arguments_error();
@@ -840,10 +836,6 @@ static VALUE rb_readByteValue(VALUE self, VALUE v_nsIndex, VALUE v_name) {
     return rb_readUaValue(self, v_nsIndex, v_name, UA_TYPES_BYTE);
 }
 
-static VALUE rb_readByteValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames) {
-    return rb_readUaValues(self, v_nsIndex, v_aryNames, UA_TYPES_BYTE);
-}
-
 static VALUE rb_get_human_UA_StatusCode(VALUE self, VALUE v_code) {
     if (RB_TYPE_P(v_code, T_FIXNUM) == 1) {
         unsigned int code = FIX2UINT(v_code);
@@ -935,7 +927,6 @@ void Init_opcua_client()
     rb_define_method(cClient, "read_bool", rb_readBooleanValue, 2);
     rb_define_method(cClient, "read_string", rb_readStringValue, 2);
     rb_define_method(cClient, "read_byte", rb_readByteValue, 2);
-    rb_define_method(cClient, "read_bytes", rb_readByteValues, 2);
 
     rb_define_method(cClient, "write_int16", rb_writeInt16Value, 3);
     rb_define_method(cClient, "write_uint16", rb_writeUInt16Value, 3);
@@ -947,7 +938,6 @@ void Init_opcua_client()
     rb_define_method(cClient, "write_bool", rb_writeBooleanValue, 3);
     rb_define_method(cClient, "write_string", rb_writeStringValue, 3);
     rb_define_method(cClient, "write_byte", rb_writeByteValue, 3);
-    rb_define_method(cClient, "write_bytes", rb_writeByteValues, 3);
 
     rb_define_method(cClient, "multi_write_int16", rb_writeInt16Values, 3);
     rb_define_method(cClient, "multi_write_uint16", rb_writeUInt16Values, 3);
