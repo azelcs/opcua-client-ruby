@@ -1019,7 +1019,7 @@ void Init_opcua_client()
     rb_define_method(cClient, "multi_write_bool", rb_writeBooleanValues, 3);
     rb_define_method(cClient, "multi_write_string", rb_writeStringValues, 3);
     rb_define_method(cClient, "multi_write_byte", rb_writeByteValues, 3);
-    rb_define_method(cClient, "multi_write_int32_list", rb_writeint32ListValues, 3);
+    rb_define_method(cClient, "multi_write_int32_list", rb_writeInt32ListValues, 3);
 
     rb_define_method(cClient, "multi_read", rb_readUaValues, 2);
 
