@@ -636,6 +636,12 @@ static VALUE rb_writeUaValue(VALUE self, VALUE v_nsIndex, VALUE v_name, VALUE v_
         value.data = UA_malloc(sizeof(UA_String));
         UA_String_copy(&newValue, (UA_String*)value.data);
         value.type = &UA_TYPES[UA_TYPES_STRING];
+    } else if (uaType == UA_TYPES_BYTE) {
+        Check_Type(v_newValue, T_FIXNUM);
+        UA_Byte newValue = NUM2BYTE(v_newValue);
+        value.data = UA_malloc(sizeof(UA_Byte));
+        *(UA_Byte*)value.data = newValue;
+        value.type = &UA_TYPES[UA_TYPES_BYTE];
     } else {
         rb_raise(cError, "Unsupported type");
     }
@@ -720,6 +726,14 @@ static VALUE rb_writeStringValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames,
     return rb_writeUaValues(self, v_nsIndex, v_aryNames, v_aryNewValues, UA_TYPES_STRING);
 }
 
+static VALUE rb_writeByteValue(VALUE self, VALUE v_nsIndex, VALUE v_name, VALUE v_newValue) {
+    return rb_writeUaValue(self, v_nsIndex, v_name, v_newValue, UA_TYPES_BYTE);
+}
+
+static VALUE rb_writeByteValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames, VALUE v_aryNewValues) {
+    return rb_writeUaValues(self, v_nsIndex, v_aryNames, v_aryNewValues, UA_TYPES_BYTE);
+}
+
 static VALUE rb_readUaValue(VALUE self, VALUE v_nsIndex, VALUE v_name, int type) {
     if (RB_TYPE_P(v_name, T_STRING) != 1) {
         return raise_invalid_arguments_error();
@@ -776,6 +790,9 @@ static VALUE rb_readUaValue(VALUE self, VALUE v_nsIndex, VALUE v_name, int type)
     } else if (type == UA_TYPES_STRING && UA_Variant_hasScalarType(&value, &UA_TYPES[UA_TYPES_STRING])) {
         UA_String val =*(UA_String*)value.data;
         result = rb_utf8_str_new(val.data, val.length);
+    } else if (type == UA_TYPES_BYTE && UA_Variant_hasScalarType(&value, &UA_TYPES[UA_TYPES_BYTE])) {
+        UA_Byte val = *(UA_Byte*)value.data;
+        result = INT2FIX(val);
     } else {
         rb_raise(cError, "UA type mismatch");
         return Qnil;
@@ -817,6 +834,14 @@ static VALUE rb_readDoubleValue(VALUE self, VALUE v_nsIndex, VALUE v_name) {
 
 static VALUE rb_readStringValue(VALUE self, VALUE v_nsIndex, VALUE v_name) {
     return rb_readUaValue(self, v_nsIndex, v_name, UA_TYPES_STRING);
+}
+
+static VALUE rb_readByteValue(VALUE self, VALUE v_nsIndex, VALUE v_name) {
+    return rb_readUaValue(self, v_nsIndex, v_name, UA_TYPES_BYTE);
+}
+
+static VALUE rb_readByteValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames) {
+    return rb_readUaValues(self, v_nsIndex, v_aryNames, UA_TYPES_BYTE);
 }
 
 static VALUE rb_get_human_UA_StatusCode(VALUE self, VALUE v_code) {
@@ -909,6 +934,8 @@ void Init_opcua_client()
     rb_define_method(cClient, "read_boolean", rb_readBooleanValue, 2);
     rb_define_method(cClient, "read_bool", rb_readBooleanValue, 2);
     rb_define_method(cClient, "read_string", rb_readStringValue, 2);
+    rb_define_method(cClient, "read_byte", rb_readByteValue, 2);
+    rb_define_method(cClient, "read_bytes", rb_readByteValues, 2);
 
     rb_define_method(cClient, "write_int16", rb_writeInt16Value, 3);
     rb_define_method(cClient, "write_uint16", rb_writeUInt16Value, 3);
@@ -919,6 +946,8 @@ void Init_opcua_client()
     rb_define_method(cClient, "write_boolean", rb_writeBooleanValue, 3);
     rb_define_method(cClient, "write_bool", rb_writeBooleanValue, 3);
     rb_define_method(cClient, "write_string", rb_writeStringValue, 3);
+    rb_define_method(cClient, "write_byte", rb_writeByteValue, 3);
+    rb_define_method(cClient, "write_bytes", rb_writeByteValues, 3);
 
     rb_define_method(cClient, "multi_write_int16", rb_writeInt16Values, 3);
     rb_define_method(cClient, "multi_write_uint16", rb_writeUInt16Values, 3);
