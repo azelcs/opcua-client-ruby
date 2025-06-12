@@ -511,6 +511,19 @@ static VALUE rb_writeUaValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames, VAL
             values[i].data = UA_malloc(sizeof(UA_UInt32));
             *(UA_UInt32*)values[i].data = newValue;
             values[i].type = &UA_TYPES[uaType];
+        } else if (uaType == UA_TYPES_INT32 && RB_TYPE_P(v_newValue, T_ARRAY)) {
+            size_t arrayLength = RARRAY_LEN(v_newValue);
+            UA_Int32 *arrayData = UA_malloc(sizeof(UA_Int32) * arrayLength);
+
+            for (size_t j = 0; j < arrayLength; j++) {
+                VALUE element = rb_ary_entry(v_newValue, j);
+                Check_Type(element, T_FIXNUM);
+                arrayData[j] = NUM2INT(element);
+            }
+
+            values[i].data = arrayData;
+            values[i].arrayLength = arrayLength;
+            values[i].type = &UA_TYPES[UA_TYPES_INT32];
         } else if (uaType == UA_TYPES_INT32) {
             Check_Type(v_newValue, T_FIXNUM);
             UA_Int32 newValue = NUM2INT(v_newValue);
@@ -549,20 +562,7 @@ static VALUE rb_writeUaValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames, VAL
             values[i].data = UA_malloc(sizeof(UA_Byte));
             *(UA_Byte*)values[i].data = newValue;
             values[i].type = &UA_TYPES[uaType];
-        } else if (uaType == UA_TYPES_INT32 && RB_TYPE_P(v_newValue, T_ARRAY)) {
-            size_t arrayLength = RARRAY_LEN(v_newValue);
-            UA_Int32 *arrayData = UA_malloc(sizeof(UA_Int32) * arrayLength);
-
-            for (size_t j = 0; j < arrayLength; j++) {
-                VALUE element = rb_ary_entry(v_newValue, j);
-                Check_Type(element, T_FIXNUM);
-                arrayData[j] = NUM2INT(element);
-            }
-
-            values[i].data = arrayData;
-            values[i].arrayLength = arrayLength;
-            values[i].type = &UA_TYPES[UA_TYPES_INT32];
-         } else {
+        } else {
             rb_raise(cError, "Unsupported type");
         }
     }
