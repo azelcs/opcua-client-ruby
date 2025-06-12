@@ -62,6 +62,8 @@ All methods raise OPCUAClient::Error if unsuccessful.
 * ```client.read_double(Fixnum ns, String name) => Double```
 * ```client.read_boolean(Fixnum ns, String name) => true/false```
 * ```client.read_string(Fixnum ns, String name) => String```
+* ```client.read_byte(Fixnum ns, String name) => Byte```
+* ```client.read_uint32_list(Fixnum ns, String name) => Array[Fixnum]```
 * ```client.multi_read(Fixnum ns, Array[String] names) => Array values```
 * ```client.write_int16(Fixnum ns, String name, Fixnum value)```
 * ```client.write_uint16(Fixnum ns, String name, Fixnum value)```
@@ -71,6 +73,7 @@ All methods raise OPCUAClient::Error if unsuccessful.
 * ```client.write_double(Fixnum ns, String name, Double value)```
 * ```client.write_boolean(Fixnum ns, String name, bool value)```
 * ```client.write_string(Fixnum ns, String name, String value)```
+* ```client.write_uint32_list(Fixnum ns, String name, Array[Fixnum] value)```
 * ```client.multi_write_int16(Fixnum ns, Array[String] names, Array[Fixnum] values)```
 * ```client.multi_write_uint16(Fixnum ns, Array[String] names, Array[Fixnum] values)```
 * ```client.multi_write_int32(Fixnum ns, Array[String] names, Array[Fixnum] values)```

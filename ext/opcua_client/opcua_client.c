@@ -611,6 +611,19 @@ static VALUE rb_writeUaValue(VALUE self, VALUE v_nsIndex, VALUE v_name, VALUE v_
         value.data = UA_malloc(sizeof(UA_Int32));
         *(UA_Int32*)value.data = newValue;
         value.type = &UA_TYPES[UA_TYPES_INT32];
+    } else if (uaType == UA_TYPES_UINT32 && RB_TYPE_P(v_newValue, T_ARRAY)) {
+        size_t arrayLength = RARRAY_LEN(v_newValue);
+        UA_UInt32 *arrayData = UA_malloc(sizeof(UA_UInt32) * arrayLength);
+
+        for (size_t i = 0; i < arrayLength; i++) {
+            VALUE element = rb_ary_entry(v_newValue, i);
+            Check_Type(element, T_FIXNUM);
+            arrayData[i] = NUM2UINT(element);
+        }
+
+        value.data = arrayData;
+        value.arrayLength = arrayLength;
+        value.type = &UA_TYPES[UA_TYPES_UINT32];
     } else if (uaType == UA_TYPES_UINT32) {
         UA_UInt32 newValue = NUM2UINT(v_newValue);
         value.data = UA_malloc(sizeof(UA_UInt32));
@@ -694,6 +707,10 @@ static VALUE rb_writeUInt32Values(VALUE self, VALUE v_nsIndex, VALUE v_aryNames,
     return rb_writeUaValues(self, v_nsIndex, v_aryNames, v_aryNewValues, UA_TYPES_UINT32);
 }
 
+static VALUE rb_writeUint32List(VALUE self, VALUE v_nsIndex, VALUE v_name, VALUE v_newValue) {
+    return rb_writeUaValue(self, v_nsIndex, v_name, v_newValue, UA_TYPES_UINT32);
+}
+
 static VALUE rb_writeBooleanValue(VALUE self, VALUE v_nsIndex, VALUE v_name, VALUE v_newValue) {
     return rb_writeUaValue(self, v_nsIndex, v_name, v_newValue, UA_TYPES_BOOLEAN);
 }
@@ -771,6 +788,14 @@ static VALUE rb_readUaValue(VALUE self, VALUE v_nsIndex, VALUE v_name, int type)
     } else if (type == UA_TYPES_INT32 && UA_Variant_hasScalarType(&value, &UA_TYPES[UA_TYPES_INT32])) {
         UA_Int32 val =*(UA_Int32*)value.data;
         result = INT2FIX(val);
+    } else if (type == UA_TYPES_UINT32 && UA_Variant_hasArrayType(&value, &UA_TYPES[UA_TYPES_UINT32])) {
+        size_t arrayLength = value.arrayLength;
+        UA_UInt32 *arrayData = (UA_UInt32 *)value.data;
+
+        result = rb_ary_new();
+        for (size_t i = 0; i < arrayLength; i++) {
+            rb_ary_push(result, INT2FIX(arrayData[i]));
+        }
     } else if (type == UA_TYPES_UINT32 && UA_Variant_hasScalarType(&value, &UA_TYPES[UA_TYPES_UINT32])) {
         UA_UInt32 val =*(UA_UInt32*)value.data;
         result = INT2FIX(val);
@@ -813,6 +838,10 @@ static VALUE rb_readInt32Value(VALUE self, VALUE v_nsIndex, VALUE v_name) {
 }
 
 static VALUE rb_readUInt32Value(VALUE self, VALUE v_nsIndex, VALUE v_name) {
+    return rb_readUaValue(self, v_nsIndex, v_name, UA_TYPES_UINT32);
+}
+
+static VALUE rb_readUint32List(VALUE self, VALUE v_nsIndex, VALUE v_name) {
     return rb_readUaValue(self, v_nsIndex, v_name, UA_TYPES_UINT32);
 }
 
@@ -927,6 +956,7 @@ void Init_opcua_client()
     rb_define_method(cClient, "read_bool", rb_readBooleanValue, 2);
     rb_define_method(cClient, "read_string", rb_readStringValue, 2);
     rb_define_method(cClient, "read_byte", rb_readByteValue, 2);
+    rb_define_method(cClient, "read_uint32_list", rb_readUint32List, 2);
 
     rb_define_method(cClient, "write_int16", rb_writeInt16Value, 3);
     rb_define_method(cClient, "write_uint16", rb_writeUInt16Value, 3);
@@ -938,6 +968,7 @@ void Init_opcua_client()
     rb_define_method(cClient, "write_bool", rb_writeBooleanValue, 3);
     rb_define_method(cClient, "write_string", rb_writeStringValue, 3);
     rb_define_method(cClient, "write_byte", rb_writeByteValue, 3);
+    rb_define_method(cClient, "write_uint32_list", rb_writeUint32List, 3);
 
     rb_define_method(cClient, "multi_write_int16", rb_writeInt16Values, 3);
     rb_define_method(cClient, "multi_write_uint16", rb_writeUInt16Values, 3);
