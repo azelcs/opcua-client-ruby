@@ -524,7 +524,7 @@ static VALUE rb_writeUaValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames, VAL
             *(UA_Float*)values[i].data = newValue;
             values[i].type = &UA_TYPES[uaType];
         } else if (uaType == UA_TYPES_DOUBLE) {
-            Check_Type(v_newValue, T_DOUBLE);
+            Check_Type(v_newValue, T_FLOAT);
             UA_Double newValue = NUM2DBL(v_newValue);
             values[i].data = UA_malloc(sizeof(UA_Double));
             *(UA_Float*)values[i].data = newValue;
