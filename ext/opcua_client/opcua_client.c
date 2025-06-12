@@ -543,7 +543,26 @@ static VALUE rb_writeUaValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames, VAL
             values[i].data = UA_malloc(sizeof(UA_String));
             UA_String_copy(&newValue, (UA_String*)values[i].data);
             values[i].type = &UA_TYPES[uaType];
-        } else {
+        } else if (uaType == UA_TYPES_BYTE) {
+            Check_Type(v_newValue, T_FIXNUM);
+            UA_Byte newValue = (UA_Byte)NUM2UINT(v_newValue);
+            values[i].data = UA_malloc(sizeof(UA_Byte));
+            *(UA_Byte*)values[i].data = newValue;
+            values[i].type = &UA_TYPES[uaType];
+        } else if (uaType == UA_TYPES_INT32 && RB_TYPE_P(v_newValue, T_ARRAY)) {
+            size_t arrayLength = RARRAY_LEN(v_newValue);
+            UA_Int32 *arrayData = UA_malloc(sizeof(UA_Int32) * arrayLength);
+
+            for (size_t j = 0; j < arrayLength; j++) {
+                VALUE element = rb_ary_entry(v_newValue, j);
+                Check_Type(element, T_FIXNUM);
+                arrayData[j] = NUM2INT(element);
+            }
+
+            values[i].data = arrayData;
+            values[i].arrayLength = arrayLength;
+            values[i].type = &UA_TYPES[UA_TYPES_INT32];
+         } else {
             rb_raise(cError, "Unsupported type");
         }
     }
@@ -668,7 +687,8 @@ static VALUE rb_writeUaValue(VALUE self, VALUE v_nsIndex, VALUE v_name, VALUE v_
         value.data = UA_malloc(sizeof(UA_Byte));
         *(UA_Byte*)value.data = newValue;
         value.type = &UA_TYPES[UA_TYPES_BYTE];
-    } else {
+    }
+    else {
         rb_raise(cError, "Unsupported type");
     }
 
