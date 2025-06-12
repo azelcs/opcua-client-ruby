@@ -728,6 +728,10 @@ static VALUE rb_writeUint32List(VALUE self, VALUE v_nsIndex, VALUE v_name, VALUE
     return rb_writeUaValue(self, v_nsIndex, v_name, v_newValue, UA_TYPES_UINT32);
 }
 
+static VALUE rb_writeInt32ListValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames, VALUE v_aryNewValues) {
+    return rb_writeUaValues(self, v_nsIndex, v_aryNames, v_aryNewValues, UA_TYPES_INT32);
+}
+
 static VALUE rb_writeBooleanValue(VALUE self, VALUE v_nsIndex, VALUE v_name, VALUE v_newValue) {
     return rb_writeUaValue(self, v_nsIndex, v_name, v_newValue, UA_TYPES_BOOLEAN);
 }
@@ -762,6 +766,10 @@ static VALUE rb_writeStringValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames,
 
 static VALUE rb_writeByteValue(VALUE self, VALUE v_nsIndex, VALUE v_name, VALUE v_newValue) {
     return rb_writeUaValue(self, v_nsIndex, v_name, v_newValue, UA_TYPES_BYTE);
+}
+
+static VALUE rb_writeByteValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames, VALUE v_aryNewValues) {
+    return rb_writeUaValues(self, v_nsIndex, v_aryNames, v_aryNewValues, UA_TYPES_BYTE);
 }
 
 static VALUE rb_readUaValue(VALUE self, VALUE v_nsIndex, VALUE v_name, int type) {
@@ -1010,6 +1018,8 @@ void Init_opcua_client()
     rb_define_method(cClient, "multi_write_boolean", rb_writeBooleanValues, 3);
     rb_define_method(cClient, "multi_write_bool", rb_writeBooleanValues, 3);
     rb_define_method(cClient, "multi_write_string", rb_writeStringValues, 3);
+    rb_define_method(cClient, "multi_write_byte", rb_writeByteValues, 3);
+    rb_define_method(cClient, "multi_write_uint32_list", rb_writeUint32ListValues, 3);
 
     rb_define_method(cClient, "multi_read", rb_readUaValues, 2);
 

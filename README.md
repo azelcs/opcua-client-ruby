@@ -84,6 +84,9 @@ All methods raise OPCUAClient::Error if unsuccessful.
 * ```client.multi_write_double(Fixnum ns, Array[String] names, Array[Double] values)```
 * ```client.multi_write_boolean(Fixnum ns, Array[String] names, Array[bool] values)```
 * ```client.multi_write_string(Fixnum ns, Array[String] names, Array[String] values)```
+* ```client.multi_write_byte(Fixnum ns, Array[String] names, Array[Byte] values)```
+* ```client.multi_write_int32_list(Fixnum ns, Array[String] names, Array[Array[Fixnum]] values)```
+
 
 ### Available methods - misc:
 
