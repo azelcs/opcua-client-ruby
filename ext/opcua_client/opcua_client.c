@@ -281,7 +281,7 @@ static UA_StatusCode multiRead(UA_Client *client, const UA_NodeId *nodeId, UA_Va
     }
 
     if (retval != UA_STATUSCODE_GOOD) {
-        UA_ReadResponse_deleteMembers(&response);
+        UA_ReadResponse_delete(&response);
         UA_free(rValues);
         return retval;
     }
@@ -291,7 +291,7 @@ static UA_StatusCode multiRead(UA_Client *client, const UA_NodeId *nodeId, UA_Va
 
     if (response.resultsSize != (size_t)varsCount) {
         retval = UA_STATUSCODE_BADUNEXPECTEDERROR;
-        UA_ReadResponse_deleteMembers(&response);
+        UA_ReadResponse_delete(&response);
         UA_free(rValues);
         return retval;
     }
@@ -299,7 +299,7 @@ static UA_StatusCode multiRead(UA_Client *client, const UA_NodeId *nodeId, UA_Va
     for (int i = 0; i < varsCount; i++) {
         if ((results[i].hasStatus && results[i].status != UA_STATUSCODE_GOOD) || !results[i].hasValue) {
             retval = UA_STATUSCODE_BADUNEXPECTEDERROR;
-            UA_ReadResponse_deleteMembers(&response);
+            UA_ReadResponse_delete(&response);
             UA_free(rValues);
             return retval;
         }
@@ -310,7 +310,7 @@ static UA_StatusCode multiRead(UA_Client *client, const UA_NodeId *nodeId, UA_Va
         UA_Variant_init(&results[i].value);
     }
 
-    UA_ReadResponse_deleteMembers(&response);
+    UA_ReadResponse_delete(&response);
     UA_free(rValues);
     return retval;
 }
@@ -361,7 +361,7 @@ static UA_StatusCode multiWrite(UA_Client *client, const UA_NodeId *nodeId, cons
         // printf("%s\n", "multiWrite: bad write");
     }
 
-    UA_WriteResponse_deleteMembers(&wResp);
+    UA_WriteResponse_delete(&wResp);
     UA_free(wValues);
 
     return retval;
@@ -445,7 +445,7 @@ static VALUE rb_readUaValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames) {
     } else {
         /* Clean up */
         for (int i=0; i<namesCount; i++) {
-            UA_Variant_deleteMembers(&readValues[i]);
+            UA_Variant_clear(&readValues[i]);
         }
         UA_free(nodes);
         UA_free(readValues);
@@ -455,7 +455,7 @@ static VALUE rb_readUaValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames) {
 
     /* Clean up */
     for (int i=0; i<namesCount; i++) {
-        UA_Variant_deleteMembers(&readValues[i]);
+        UA_Variant_clear(&readValues[i]);
     }
     UA_free(nodes);
     UA_free(readValues);
@@ -582,7 +582,7 @@ static VALUE rb_writeUaValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames, VAL
     } else {
         /* Clean up */
         for (int i=0; i<namesCount; i++) {
-            UA_Variant_deleteMembers(&values[i]);
+            UA_Variant_clear(&values[i]);
         }
         UA_free(nodes);
         UA_free(values);
@@ -592,7 +592,7 @@ static VALUE rb_writeUaValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames, VAL
 
     /* Clean up */
     for (int i=0; i<namesCount; i++) {
-        UA_Variant_deleteMembers(&values[i]);
+        UA_Variant_clear(&values[i]);
     }
     UA_free(nodes);
     UA_free(values);
@@ -706,12 +706,12 @@ static VALUE rb_writeUaValue(VALUE self, VALUE v_nsIndex, VALUE v_name, VALUE v_
         // printf("%s\n", "value write successful");
     } else {
         /* Clean up */
-        UA_Variant_deleteMembers(&value);
+        UA_Variant_clear(&value);
         return raise_ua_status_error(status);
     }
 
     /* Clean up */
-    UA_Variant_deleteMembers(&value);
+    UA_Variant_clear(&value);
 
     return Qnil;
 }
@@ -824,7 +824,7 @@ static VALUE rb_readUaValue(VALUE self, VALUE v_nsIndex, VALUE v_name, int type)
         // printf("%s\n", "value read successful");
     } else {
         /* Clean up */
-        UA_Variant_deleteMembers(&value);
+        UA_Variant_clear(&value);
         return raise_ua_status_error(status);
     }
 
@@ -881,7 +881,7 @@ static VALUE rb_readUaValue(VALUE self, VALUE v_nsIndex, VALUE v_name, int type)
     }
 
     /* Clean up */
-    UA_Variant_deleteMembers(&value);
+    UA_Variant_clear(&value);
 
     return result;
 }
