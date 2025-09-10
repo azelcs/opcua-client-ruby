@@ -91,7 +91,6 @@ All methods raise OPCUAClient::Error if unsuccessful.
 ### Available methods - misc:
 
 * ```client.state => Fixnum``` - client internal state
-* ```client.human_state => String``` - human readable client internal state
 * ```OPCUAClient::Client.human_status_code(Fixnum status) => String``` - returns human status for status
 
 ## Subscriptions and monitoring
