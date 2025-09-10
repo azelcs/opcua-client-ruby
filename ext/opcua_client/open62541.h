@@ -65,24 +65,24 @@
 #define UA_LOGLEVEL 100
 #endif
 #define UA_ENABLE_AMALGAMATION
-#define UA_ENABLE_METHODCALLS
-#define UA_ENABLE_NODEMANAGEMENT
-#define UA_ENABLE_SUBSCRIPTIONS
+/* #undef UA_ENABLE_METHODCALLS */
+/* #undef UA_ENABLE_NODEMANAGEMENT */
+/* #undef UA_ENABLE_SUBSCRIPTIONS */
 #define UA_ENABLE_PUBSUB
 /* #undef UA_ENABLE_PUBSUB_FILE_CONFIG */
 #define UA_ENABLE_PUBSUB_INFORMATIONMODEL
 #define UA_ENABLE_DA
 #define UA_ENABLE_DIAGNOSTICS
-#define UA_ENABLE_HISTORIZING
+/* #undef UA_ENABLE_HISTORIZING */
 #define UA_ENABLE_PARSING
-#define UA_ENABLE_SUBSCRIPTIONS_EVENTS
-#define UA_ENABLE_JSON_ENCODING
+/* #undef UA_ENABLE_SUBSCRIPTIONS_EVENTS */
+/* #undef UA_ENABLE_JSON_ENCODING */
 /* #undef UA_ENABLE_JSON_ENCODING_LEGACY */
-#define UA_ENABLE_XML_ENCODING
+/* #undef UA_ENABLE_XML_ENCODING */
 /* #undef UA_ENABLE_MQTT */
 /* #undef UA_ENABLE_NODESET_INJECTOR */
 /* #undef UA_INFORMATION_MODEL_AUTOLOAD */
-// #define UA_ENABLE_ENCRYPTION_MBEDTLS
+/* #undef UA_ENABLE_ENCRYPTION_MBEDTLS */
 /* #undef UA_ENABLE_GDS_PUSHMANAGEMENT */
 /* #undef UA_ENABLE_TPM2_SECURITY */
 /* #undef UA_ENABLE_ENCRYPTION_OPENSSL */
@@ -96,19 +96,19 @@
 #define UA_MULTITHREADING 100
 
 /* Advanced Options */
-#define UA_ENABLE_STATUSCODE_DESCRIPTIONS
+/* #undef UA_ENABLE_STATUSCODE_DESCRIPTIONS */
 #define UA_ENABLE_TYPEDESCRIPTION
 /* #undef UA_ENABLE_INLINABLE_EXPORT */
 #define UA_ENABLE_NODESET_COMPILER_DESCRIPTIONS
 /* #undef UA_ENABLE_DETERMINISTIC_RNG */
-#define UA_ENABLE_DISCOVERY
+/* #undef UA_ENABLE_DISCOVERY */
 /* #undef UA_ENABLE_DISCOVERY_MULTICAST_MDNSD */
 /* #undef UA_ENABLE_DISCOVERY_MULTICAST_AVAHI */
 #if defined(UA_ENABLE_DISCOVERY_MULTICAST_MDNSD) || defined(UA_ENABLE_DISCOVERY_MULTICAST_AVAHI)
 #define UA_ENABLE_DISCOVERY_MULTICAST
 #endif
 /* #undef UA_ENABLE_QUERY */
-/* #undef UA_ENABLE_MALLOC_SINGLETON */
+#define UA_ENABLE_MALLOC_SINGLETON
 #define UA_ENABLE_DISCOVERY_SEMAPHORE
 #define UA_GENERATED_NAMESPACE_ZERO
 /* #undef UA_GENERATED_NAMESPACE_ZERO_FULL */
@@ -147,7 +147,7 @@
 /**
  * QNX Flags
  * -------------------
- * Defining _QNX_SOURCE will ensure proper qnx types and other features
+ * Defining _QNX_SOURCE will ensure proper qnx types and other features 
  * are available. */
 #if defined(__QNX__)
 # define _QNX_SOURCE 1
@@ -156,7 +156,7 @@
 /**
  * QNX Flags
  * -------------------
- * Defining _QNX_SOURCE will ensure proper qnx types and other features
+ * Defining _QNX_SOURCE will ensure proper qnx types and other features 
  * are available. */
 #if defined(__QNX__)
 # define _QNX_SOURCE 1
@@ -22061,7 +22061,7 @@ UA_STATIC_ASSERT(sizeof(bool) == 1, cannot_overlay_integers_with_large_bool);
 #define UA_NS0ID_REFERENCELISTENTRYDATATYPE_ENCODING_DEFAULTJSON 32678 /* Object */
 #define UA_NS0ID_HASREFERENCEDESCRIPTION 32679 /* ReferenceType */
 #define UA_NS0ID_OPTIONSETLENGTH 32750 /* Variable */
-#endif /* UA_NODEIDS_NS0_H_ */
+#endif /* UA_NODEIDS_NS0_H_ */ 
 
 /**** amalgamated original file "/include/open62541/common.h" ****/
 
@@ -49500,542 +49500,6 @@ UA_CreateCertificate(const UA_Logger *logger, const UA_String *subject,
                      UA_KeyValueMap *params, UA_ByteString *outPrivateKey,
                      UA_ByteString *outCertificate);
 #endif
-
-_UA_END_DECLS
-
-
-/**** amalgamated original file "/plugins/include/open62541/server_config_file_based.h" ****/
-
-/* This work is licensed under a Creative Commons CCZero 1.0 Universal License.
- * See http://creativecommons.org/publicdomain/zero/1.0/ for more information.
- *
- *    Copyright 2023 (c) Fraunhofer IOSB (Author: Noel Graf)
- */
-
-#ifndef UA_SERVER_CONFIG_FILE_BASED_H
-#define UA_SERVER_CONFIG_FILE_BASED_H
-
-#include <stdio.h>
-#include <errno.h>
-
-_UA_BEGIN_DECLS
-
-/* Loads the server configuration from a Json5 file into the server.
- *
- * @param json The configuration in json5 format.
- */
-UA_EXPORT UA_Server *
-UA_Server_newFromFile(const UA_ByteString json_config);
-
-/* Loads the server configuration from a Json5 file into the server.
- *
- * @param config The server configuration.
- * @param json The configuration in json5 format.
- */
-UA_EXPORT UA_StatusCode
-UA_ServerConfig_updateFromFile(UA_ServerConfig *config, const UA_ByteString json_config);
-
-_UA_END_DECLS
-
-#endif //UA_SERVER_CONFIG_FILE_BASED_H
-
-/**** amalgamated original file "/plugins/include/open62541/plugin/historydata/history_data_backend.h" ****/
-
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/.
- *
- *    Copyright 2018 (c) basysKom GmbH <opensource@basyskom.com> (Author: Peter Rustler)
- */
-
-
-
-_UA_BEGIN_DECLS
-
-typedef enum {
-    MATCH_EQUAL, /* Match with the exact timestamp. */
-    MATCH_AFTER, /* Match the value with the timestamp in the
-                    database that is the first later in time from the provided timestamp. */
-    MATCH_EQUAL_OR_AFTER, /* Match exactly if possible, or the first timestamp
-                             later in time from the provided timestamp. */
-    MATCH_BEFORE, /* Match the first timestamp in the database that is earlier
-                     in time from the provided timestamp. */
-    MATCH_EQUAL_OR_BEFORE /* Match exactly if possible, or the first timestamp
-                             that is earlier in time from the provided timestamp. */
-} MatchStrategy;
-
-typedef struct UA_HistoryDataBackend UA_HistoryDataBackend;
-
-struct UA_HistoryDataBackend {
-    void *context;
-
-    void
-    (*deleteMembers)(UA_HistoryDataBackend *backend);
-
-    /* This function sets a DataValue for a node in the historical data storage.
-     *
-     * server is the server the node lives in.
-     * hdbContext is the context of the UA_HistoryDataBackend.
-     * sessionId and sessionContext identify the session that wants to read historical data.
-     * nodeId is the node for which the value shall be stored.
-     * value is the value which shall be stored.
-     * historizing is the historizing flag of the node identified by nodeId.
-     * If sessionId is NULL, the historizing flag is invalid and must not be used. */
-    UA_StatusCode
-    (*serverSetHistoryData)(UA_Server *server,
-                            void *hdbContext,
-                            const UA_NodeId *sessionId,
-                            void *sessionContext,
-                            const UA_NodeId *nodeId,
-                            UA_Boolean historizing,
-                            const UA_DataValue *value);
-
-    /* This function is the high level interface for the ReadRaw operation. Set
-     * it to NULL if you use the low level API for your plugin. It should be
-     * used if the low level interface does not suite your database. It is more
-     * complex to implement the high level interface but it also provide more
-     * freedom. If you implement this, then set all low level api function
-     * pointer to NULL.
-     *
-     * server is the server the node lives in.
-     * hdbContext is the context of the UA_HistoryDataBackend.
-     * sessionId and sessionContext identify the session that wants to read historical data.
-     * backend is the HistoryDataBackend whose storage is to be queried.
-     * start is the start time of the HistoryRead request.
-     * end is the end time of the HistoryRead request.
-     * nodeId is the node id of the node for which historical data is requested.
-     * maxSizePerResponse is the maximum number of items per response the server can provide.
-     * numValuesPerNode is the maximum number of items per response the client wants to receive.
-     * returnBounds determines if the client wants to receive bounding values.
-     * timestampsToReturn contains the time stamps the client is interested in.
-     * range is the numeric range the client wants to read.
-     * releaseContinuationPoints determines if the continuation points shall be released.
-     * continuationPoint is the continuation point the client wants to release or start from.
-     * outContinuationPoint is the continuation point that gets passed to the
-     *                      client by the HistoryRead service.
-     * result contains the result histoy data that gets passed to the client. */
-    UA_StatusCode
-    (*getHistoryData)(UA_Server *server,
-                      const UA_NodeId *sessionId,
-                      void *sessionContext,
-                      const UA_HistoryDataBackend *backend,
-                      const UA_DateTime start,
-                      const UA_DateTime end,
-                      const UA_NodeId *nodeId,
-                      size_t maxSizePerResponse,
-                      UA_UInt32 numValuesPerNode,
-                      UA_Boolean returnBounds,
-                      UA_TimestampsToReturn timestampsToReturn,
-                      UA_NumericRange range,
-                      UA_Boolean releaseContinuationPoints,
-                      const UA_ByteString *continuationPoint,
-                      UA_ByteString *outContinuationPoint,
-                      UA_HistoryData *result);
-
-    /* This function is part of the low level HistoryRead API. It returns the
-     * index of a value in the database which matches certain criteria.
-     *
-     * server is the server the node lives in.
-     * hdbContext is the context of the UA_HistoryDataBackend.
-     * sessionId and sessionContext identify the session that wants to read historical data.
-     * nodeId is the node id of the node for which the matching value shall be found.
-     * timestamp is the timestamp of the requested index.
-     * strategy is the matching strategy which shall be applied in finding the index. */
-    size_t
-    (*getDateTimeMatch)(UA_Server *server,
-                        void *hdbContext,
-                        const UA_NodeId *sessionId,
-                        void *sessionContext,
-                        const UA_NodeId *nodeId,
-                        const UA_DateTime timestamp,
-                        const MatchStrategy strategy);
-
-    /* This function is part of the low level HistoryRead API. It returns the
-     * index of the element after the last valid entry in the database for a
-     * node.
-     *
-     * server is the server the node lives in.
-     * hdbContext is the context of the UA_HistoryDataBackend.
-     * sessionId and sessionContext identify the session that wants to read historical data.
-     * nodeId is the node id of the node for which the end of storage shall be returned. */
-    size_t
-    (*getEnd)(UA_Server *server,
-              void *hdbContext,
-              const UA_NodeId *sessionId,
-              void *sessionContext,
-              const UA_NodeId *nodeId);
-
-    /* This function is part of the low level HistoryRead API. It returns the
-     * index of the last element in the database for a node.
-     *
-     * server is the server the node lives in.
-     * hdbContext is the context of the UA_HistoryDataBackend.
-     * sessionId and sessionContext identify the session that wants to read historical data.
-     * nodeId is the node id of the node for which the index of the last element
-     *        shall be returned. */
-    size_t
-    (*lastIndex)(UA_Server *server,
-                 void *hdbContext,
-                 const UA_NodeId *sessionId,
-                 void *sessionContext,
-                 const UA_NodeId *nodeId);
-
-    /* This function is part of the low level HistoryRead API. It returns the
-     * index of the first element in the database for a node.
-     *
-     * server is the server the node lives in.
-     * hdbContext is the context of the UA_HistoryDataBackend.
-     * sessionId and sessionContext identify the session that wants to read historical data.
-     * nodeId is the node id of the node for which the index of the first
-     *        element shall be returned. */
-    size_t
-    (*firstIndex)(UA_Server *server,
-                  void *hdbContext,
-                  const UA_NodeId *sessionId,
-                  void *sessionContext,
-                  const UA_NodeId *nodeId);
-
-    /* This function is part of the low level HistoryRead API. It returns the
-     * number of elements between startIndex and endIndex including both.
-     *
-     * server is the server the node lives in.
-     * hdbContext is the context of the UA_HistoryDataBackend.
-     * sessionId and sessionContext identify the session that wants to read historical data.
-     * nodeId is the node id of the node for which the number of elements shall be returned.
-     * startIndex is the index of the first element in the range.
-     * endIndex is the index of the last element in the range. */
-    size_t
-    (*resultSize)(UA_Server *server,
-                  void *hdbContext,
-                  const UA_NodeId *sessionId,
-                  void *sessionContext,
-                  const UA_NodeId *nodeId,
-                  size_t startIndex,
-                  size_t endIndex);
-
-    /* This function is part of the low level HistoryRead API. It copies data
-     * values inside a certain range into a buffer.
-     *
-     * server is the server the node lives in.
-     * hdbContext is the context of the UA_HistoryDataBackend.
-     * sessionId and sessionContext identify the session that wants to read historical data.
-     * nodeId is the node id of the node for which the data values shall be copied.
-     * startIndex is the index of the first value in the range.
-     * endIndex is the index of the last value in the range.
-     * reverse determines if the values shall be copied in reverse order.
-     * valueSize is the maximal number of data values to copy.
-     * range is the numeric range which shall be copied for every data value.
-     * releaseContinuationPoints determines if the continuation points shall be released.
-     * continuationPoint is a continuation point the client wants to release or start from.
-     * outContinuationPoint is a continuation point which will be passed to the client.
-     * providedValues contains the number of values that were copied.
-     * values contains the values that have been copied from the database. */
-    UA_StatusCode
-    (*copyDataValues)(UA_Server *server,
-                      void *hdbContext,
-                      const UA_NodeId *sessionId,
-                      void *sessionContext,
-                      const UA_NodeId *nodeId,
-                      size_t startIndex,
-                      size_t endIndex,
-                      UA_Boolean reverse,
-                      size_t valueSize,
-                      UA_NumericRange range,
-                      UA_Boolean releaseContinuationPoints,
-                      const UA_ByteString *continuationPoint,
-                      UA_ByteString *outContinuationPoint,
-                      size_t *providedValues,
-                      UA_DataValue *values);
-
-    /* This function is part of the low level HistoryRead API. It returns the
-     * data value stored at a certain index in the database.
-     *
-     * server is the server the node lives in.
-     * hdbContext is the context of the UA_HistoryDataBackend.
-     * sessionId and sessionContext identify the session that wants to read historical data.
-     * nodeId is the node id of the node for which the data value shall be returned.
-     * index is the index in the database for which the data value is requested. */
-    const UA_DataValue*
-    (*getDataValue)(UA_Server *server,
-                    void *hdbContext,
-                    const UA_NodeId *sessionId,
-                    void *sessionContext,
-                    const UA_NodeId *nodeId,
-                    size_t index);
-
-    /* This function returns UA_TRUE if the backend supports returning bounding
-     * values for a node. This function is mandatory.
-     *
-     * server is the server the node lives in.
-     * hdbContext is the context of the UA_HistoryDataBackend.
-     * sessionId and sessionContext identify the session that wants to read
-     *           historical data.
-     * nodeId is the node id of the node for which the capability to return
-     *        bounds shall be queried. */
-    UA_Boolean
-    (*boundSupported)(UA_Server *server,
-                      void *hdbContext,
-                      const UA_NodeId *sessionId,
-                      void *sessionContext,
-                      const UA_NodeId *nodeId);
-
-    /* This function returns UA_TRUE if the backend supports returning the
-     * requested timestamps for a node. This function is mandatory.
-     *
-     * server is the server the node lives in.
-     * hdbContext is the context of the UA_HistoryDataBackend.
-     * sessionId and sessionContext identify the session that wants to read historical data.
-     * nodeId is the node id of the node for which the capability to return
-     *        certain timestamps shall be queried. */
-    UA_Boolean
-    (*timestampsToReturnSupported)(UA_Server *server,
-                                   void *hdbContext,
-                                   const UA_NodeId *sessionId,
-                                   void *sessionContext,
-                                   const UA_NodeId *nodeId,
-                                   const UA_TimestampsToReturn timestampsToReturn);
-
-    UA_StatusCode
-    (*insertDataValue)(UA_Server *server,
-                       void *hdbContext,
-                       const UA_NodeId *sessionId,
-                       void *sessionContext,
-                       const UA_NodeId *nodeId,
-                       const UA_DataValue *value);
-    UA_StatusCode
-    (*replaceDataValue)(UA_Server *server,
-                        void *hdbContext,
-                        const UA_NodeId *sessionId,
-                        void *sessionContext,
-                        const UA_NodeId *nodeId,
-                        const UA_DataValue *value);
-    UA_StatusCode
-    (*updateDataValue)(UA_Server *server,
-                       void *hdbContext,
-                       const UA_NodeId *sessionId,
-                       void *sessionContext,
-                       const UA_NodeId *nodeId,
-                       const UA_DataValue *value);
-    UA_StatusCode
-    (*removeDataValue)(UA_Server *server,
-                       void *hdbContext,
-                       const UA_NodeId *sessionId,
-                       void *sessionContext,
-                       const UA_NodeId *nodeId,
-                       UA_DateTime startTimestamp,
-                       UA_DateTime endTimestamp);
-};
-
-_UA_END_DECLS
-
-
-/**** amalgamated original file "/plugins/include/open62541/plugin/historydata/history_data_gathering.h" ****/
-
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/.
- *
- *    Copyright 2018 (c) basysKom GmbH <opensource@basyskom.com> (Author: Peter Rustler)
- */
-
-
-
-_UA_BEGIN_DECLS
-
-typedef enum {
-    UA_HISTORIZINGUPDATESTRATEGY_USER     = 0x00, /* The user of the api stores the values to the database himself.
-                                                     The api will not store any value to the database. */
-    UA_HISTORIZINGUPDATESTRATEGY_VALUESET = 0x01, /* Values will be stored when a node's value is set.
-                                                     The values will be stored when a node is updated via write service.*/
-    UA_HISTORIZINGUPDATESTRATEGY_POLL     = 0x02  /* The value of the node will be read periodically.
-                                                     This is mainly relevant for datasource nodes which do
-                                                     not use the write service.
-                                                     Values will not be stored if the value is
-                                                     equal to the old value. */
-} UA_HistorizingUpdateStrategy;
-
-typedef struct {
-    UA_HistoryDataBackend historizingBackend; /* The database backend used for this node. */
-    size_t maxHistoryDataResponseSize; /* The maximum number of values returned by the server in one response.
-                                          If the result has more values, continuation points will be used. */
-    UA_HistorizingUpdateStrategy historizingUpdateStrategy; /* Defines how the values in the database will be updated.
-                                                               See UA_HistorizingUpdateStrategy for details. */
-    size_t pollingInterval; /* The polling interval for UA_HISTORIZINGUPDATESTRATEGY_POLL. */
-    void *userContext; /* A pointer to store your own settings. */
-} UA_HistorizingNodeIdSettings;
-
-typedef struct UA_HistoryDataGathering UA_HistoryDataGathering;
-struct UA_HistoryDataGathering {
-    void *context;
-
-    void
-    (*deleteMembers)(UA_HistoryDataGathering *gathering);
-
-    /* This function registers a node for the gathering of historical data.
-     *
-     * server is the server the node lives in.
-     * hdgContext is the context of the UA_HistoryDataGathering.
-     * nodeId is the node id of the node to register.
-     * setting contains the gatering settings for the node to register. */
-    UA_StatusCode
-    (*registerNodeId)(UA_Server *server,
-                      void *hdgContext,
-                      const UA_NodeId *nodeId,
-                      const UA_HistorizingNodeIdSettings setting);
-
-    /* This function stops polling a node for value changes.
-     *
-     * server is the server the node lives in.
-     * hdgContext is the context of the UA_HistoryDataGathering.
-     * nodeId is id of the node for which polling shall be stopped.
-     * setting contains the gatering settings for the node. */
-    UA_StatusCode
-    (*stopPoll)(UA_Server *server,
-                void *hdgContext,
-                const UA_NodeId *nodeId);
-
-    /* This function starts polling a node for value changes.
-     *
-     * server is the server the node lives in.
-     * hdgContext is the context of the UA_HistoryDataGathering.
-     * nodeId is the id of the node for which polling shall be started. */
-    UA_StatusCode
-    (*startPoll)(UA_Server *server,
-                 void *hdgContext,
-                 const UA_NodeId *nodeId);
-
-    /* This function modifies the gathering settings for a node.
-     *
-     * server is the server the node lives in.
-     * hdgContext is the context of the UA_HistoryDataGathering.
-     * nodeId is the node id of the node for which gathering shall be modified.
-     * setting contains the new gatering settings for the node. */
-    UA_Boolean
-    (*updateNodeIdSetting)(UA_Server *server,
-                           void *hdgContext,
-                           const UA_NodeId *nodeId,
-                           const UA_HistorizingNodeIdSettings setting);
-
-    /* Returns the gathering settings for a node.
-     *
-     * server is the server the node lives in.
-     * hdgContext is the context of the UA_HistoryDataGathering.
-     * nodeId is the node id of the node for which the gathering settings shall
-     *        be retrieved. */
-    const UA_HistorizingNodeIdSettings*
-    (*getHistorizingSetting)(UA_Server *server,
-                             void *hdgContext,
-                             const UA_NodeId *nodeId);
-
-    /* Sets a DataValue for a node in the historical data storage.
-     *
-     * server is the server the node lives in.
-     * hdgContext is the context of the UA_HistoryDataGathering.
-     * sessionId and sessionContext identify the session which wants to set this value.
-     * nodeId is the node id of the node for which a value shall be set.
-     * historizing is the historizing flag of the node identified by nodeId.
-     * value is the value to set in the history data storage. */
-    void
-    (*setValue)(UA_Server *server,
-                void *hdgContext,
-                const UA_NodeId *sessionId,
-                void *sessionContext,
-                const UA_NodeId *nodeId,
-                UA_Boolean historizing,
-                const UA_DataValue *value);
-};
-
-_UA_END_DECLS
-
-
-/**** amalgamated original file "/plugins/include/open62541/plugin/historydata/history_database_default.h" ****/
-
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/.
- *
- *    Copyright 2018 (c) basysKom GmbH <opensource@basyskom.com> (Author: Peter Rustler)
- */
-
-
-
-
-_UA_BEGIN_DECLS
-
-UA_HistoryDatabase UA_EXPORT
-UA_HistoryDatabase_default(UA_HistoryDataGathering gathering);
-
-_UA_END_DECLS
-
-
-/**** amalgamated original file "/plugins/include/open62541/plugin/historydata/history_data_gathering_default.h" ****/
-
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/.
- *
- *    Copyright 2018 (c) basysKom GmbH <opensource@basyskom.com> (Author: Peter Rustler)
- *    Copyright 2021 (c) luibass92 <luibass92@live.it> (Author: Luigi Bassetta)
- */
-
-
-
-_UA_BEGIN_DECLS
-
-UA_HistoryDataGathering UA_EXPORT
-UA_HistoryDataGathering_Default(size_t initialNodeIdStoreSize);
-
-/* This function construct a UA_HistoryDataGathering which implements a circular buffer in memory.
- *
- * initialNodeIdStoreSize is the maximum number of NodeIds for which the data will be gathered. This number cannot be overcomed.
- */
-UA_HistoryDataGathering UA_EXPORT
-UA_HistoryDataGathering_Circular(size_t initialNodeIdStoreSize);
-
-/**
- * Pauses historical data recording for a specific NodeId.
- *
- * @param gathering The history data gathering context.
- * @param nodeId The NodeId for which recording should be paused or resumed.
- * @param pause If true, pauses recording; if false, resumes recording.
- *
- * When paused, new values for the specified NodeId will not be stored in the historical database,
- * but existing historical data will remain unaffected.
- */
-void gathering_default_pauseRecording(UA_HistoryDataGathering *gathering, const UA_NodeId *nodeId, UA_Boolean pause);
-_UA_END_DECLS
-
-
-/**** amalgamated original file "/plugins/include/open62541/plugin/historydata/history_data_backend_memory.h" ****/
-
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/.
- *
- *    Copyright 2018 (c) basysKom GmbH <opensource@basyskom.com> (Author: Peter Rustler)
- *    Copyright 2021 (c) luibass92 <luibass92@live.it> (Author: Luigi Bassetta)
- */
-
-
-
-_UA_BEGIN_DECLS
-
-#define INITIAL_MEMORY_STORE_SIZE 1000
-
-UA_HistoryDataBackend UA_EXPORT
-UA_HistoryDataBackend_Memory(size_t initialNodeIdStoreSize, size_t initialDataStoreSize);
-
-/* This function construct a UA_HistoryDataBackend which implements a circular buffer in memory.
- *
- * initialNodeIdStoreSize is the maximum number of NodeIds that will be historized. This number cannot be overcomed.
- * initialDataStoreSize is the maximum number of UA_DataValueMemoryStoreItem that will be saved in the circular buffer for a particular NodeId.
- *                      Subsequent UA_DataValueMemoryStoreItem will be saved replacing the oldest ones following the logic of circular buffers.
- */
-UA_HistoryDataBackend UA_EXPORT
-UA_HistoryDataBackend_Memory_Circular(size_t initialNodeIdStoreSize, size_t initialDataStoreSize);
-
-void UA_EXPORT
-UA_HistoryDataBackend_Memory_clear(UA_HistoryDataBackend *backend);
 
 _UA_END_DECLS
 
