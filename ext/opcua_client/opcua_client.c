@@ -177,18 +177,34 @@ static VALUE rb_initialize(VALUE self) {
     return Qnil;
 }
 
-static VALUE rb_connect(VALUE self, VALUE v_connectionString) {
+static VALUE rb_connect(int argc, VALUE *argv, VALUE self) {
+    VALUE v_connectionString, v_username, v_password;
+
+    // Require 1 arg (url), allow up to 3 (url, username, password)
+    rb_scan_args(argc, argv, "12", &v_connectionString, &v_username, &v_password);
+
     if (RB_TYPE_P(v_connectionString, T_STRING) != 1) {
         return raise_invalid_arguments_error();
     }
 
     char *connectionString = StringValueCStr(v_connectionString);
 
-    struct UninitializedClient * uclient;
+    struct UninitializedClient *uclient;
     TypedData_Get_Struct(self, struct UninitializedClient, &UA_Client_Type, uclient);
     UA_Client *client = uclient->client;
 
-    UA_StatusCode status = UA_Client_connect(client, connectionString);
+    UA_StatusCode status;
+
+    if (!NIL_P(v_username) && !NIL_P(v_password)) {
+        // Username/password auth
+        const char *username = StringValueCStr(v_username);
+        const char *password = StringValueCStr(v_password);
+
+        status = UA_Client_connect_username(client, connectionString, username, password);
+    } else {
+        // Anonymous auth
+        status = UA_Client_connect(client, connectionString);
+    }
 
     if (status == UA_STATUSCODE_GOOD) {
         return Qnil;
@@ -196,6 +212,7 @@ static VALUE rb_connect(VALUE self, VALUE v_connectionString) {
         return raise_ua_status_error(status);
     }
 }
+
 
 static VALUE rb_createSubscription(VALUE self) {
     struct UninitializedClient * uclient;
