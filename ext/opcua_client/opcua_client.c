@@ -195,14 +195,28 @@ static VALUE rb_connect(int argc, VALUE *argv, VALUE self) {
 
     UA_StatusCode status;
 
+    // Configure the client based on authentication type
+    UA_ClientConfig *config = UA_Client_getConfig(client);
+    UA_ClientConfig_setDefault(config);
+
     if (!NIL_P(v_username) && !NIL_P(v_password)) {
-        // Username/password auth
+        // Username/password authentication
         const char *username = StringValueCStr(v_username);
         const char *password = StringValueCStr(v_password);
 
+        // Set security policy and mode for username/password authentication
+        config->securityMode = UA_MESSAGESECURITYMODE_SIGNANDENCRYPT;
+        config->securityPolicyUri = UA_STRING_ALLOC("http://opcfoundation.org/UA/SecurityPolicy#Basic256Sha256");
+
+        // Connect with username and password
         status = UA_Client_connect_username(client, connectionString, username, password);
     } else {
-        // Anonymous auth
+        // Anonymous authentication
+        // Set security policy to None for anonymous authentication
+        config->securityMode = UA_MESSAGESECURITYMODE_NONE;
+        config->securityPolicyUri = UA_STRING_ALLOC("http://opcfoundation.org/UA/SecurityPolicy#None");
+
+        // Connect anonymously
         status = UA_Client_connect(client, connectionString);
     }
 
