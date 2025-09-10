@@ -189,12 +189,12 @@ static VALUE rb_connect(int argc, VALUE *argv, VALUE self) {
 
         if (channelState == UA_SECURECHANNELSTATE_OPEN && sessionState == UA_SESSIONSTATE_ACTIVATED) {
             // The client is connected, and the session is active
-            VALUE callback = rb_ivar_get(self, rb_intern("@callback_after_session_created"));
-            if (!NIL_P(callback)) {
-                VALUE params = rb_ary_new();
-                rb_ary_push(params, self);
-                rb_proc_call(callback, params);
-            }
+            // VALUE callback = rb_ivar_get(self, rb_intern("@callback_after_session_created"));
+            // if (!NIL_P(callback)) {
+            //     VALUE params = rb_ary_new();
+            //     rb_ary_push(params, self);
+            //     rb_proc_call(callback, params);
+            // }
         } else if (channelState == UA_SECURECHANNELSTATE_CLOSED) {
             // Handle closed state
             rb_raise(cError, "Client connection is closed after connecting");
@@ -282,7 +282,7 @@ static UA_StatusCode multiRead(UA_Client *client, const UA_NodeId *nodeId, UA_Va
 
     if (retval != UA_STATUSCODE_GOOD) {
         UA_ReadResponse_delete(&response);
-        // UA_free(rValues);
+        UA_free(rValues);
         return retval;
     }
 
@@ -292,7 +292,7 @@ static UA_StatusCode multiRead(UA_Client *client, const UA_NodeId *nodeId, UA_Va
     if (response.resultsSize != (size_t)varsCount) {
         retval = UA_STATUSCODE_BADUNEXPECTEDERROR;
         UA_ReadResponse_delete(&response);
-        // UA_free(rValues);
+        UA_free(rValues);
         return retval;
     }
 
@@ -300,7 +300,7 @@ static UA_StatusCode multiRead(UA_Client *client, const UA_NodeId *nodeId, UA_Va
         if ((results[i].hasStatus && results[i].status != UA_STATUSCODE_GOOD) || !results[i].hasValue) {
             retval = UA_STATUSCODE_BADUNEXPECTEDERROR;
             UA_ReadResponse_delete(&response);
-            // UA_free(rValues);
+            UA_free(rValues);
             return retval;
         }
     }
@@ -311,7 +311,7 @@ static UA_StatusCode multiRead(UA_Client *client, const UA_NodeId *nodeId, UA_Va
     }
 
     UA_ReadResponse_delete(&response);
-    // UA_free(rValues);
+    UA_free(rValues);
     return retval;
 }
 
@@ -362,7 +362,7 @@ static UA_StatusCode multiWrite(UA_Client *client, const UA_NodeId *nodeId, cons
     }
 
     UA_WriteResponse_delete(&wResp);
-    // UA_free(wValues);
+    UA_free(wValues);
 
     return retval;
 }
