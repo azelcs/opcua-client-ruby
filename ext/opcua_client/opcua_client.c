@@ -282,7 +282,7 @@ static UA_StatusCode multiRead(UA_Client *client, const UA_NodeId *nodeId, UA_Va
 
     if (retval != UA_STATUSCODE_GOOD) {
         UA_ReadResponse_delete(&response);
-        UA_free(rValues);
+        // UA_free(rValues);
         return retval;
     }
 
@@ -292,7 +292,7 @@ static UA_StatusCode multiRead(UA_Client *client, const UA_NodeId *nodeId, UA_Va
     if (response.resultsSize != (size_t)varsCount) {
         retval = UA_STATUSCODE_BADUNEXPECTEDERROR;
         UA_ReadResponse_delete(&response);
-        UA_free(rValues);
+        // UA_free(rValues);
         return retval;
     }
 
@@ -300,7 +300,7 @@ static UA_StatusCode multiRead(UA_Client *client, const UA_NodeId *nodeId, UA_Va
         if ((results[i].hasStatus && results[i].status != UA_STATUSCODE_GOOD) || !results[i].hasValue) {
             retval = UA_STATUSCODE_BADUNEXPECTEDERROR;
             UA_ReadResponse_delete(&response);
-            UA_free(rValues);
+            // UA_free(rValues);
             return retval;
         }
     }
@@ -311,7 +311,7 @@ static UA_StatusCode multiRead(UA_Client *client, const UA_NodeId *nodeId, UA_Va
     }
 
     UA_ReadResponse_delete(&response);
-    UA_free(rValues);
+    // UA_free(rValues);
     return retval;
 }
 
@@ -362,7 +362,7 @@ static UA_StatusCode multiWrite(UA_Client *client, const UA_NodeId *nodeId, cons
     }
 
     UA_WriteResponse_delete(&wResp);
-    UA_free(wValues);
+    // UA_free(wValues);
 
     return retval;
 }
