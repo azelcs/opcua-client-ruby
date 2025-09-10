@@ -269,7 +269,7 @@ static UA_StatusCode multiRead(UA_Client *client, const UA_NodeId *nodeId, UA_Va
     UA_UInt16 rvSize = UA_TYPES[UA_TYPES_READVALUEID].memSize;
     UA_ReadValueId *rValues = UA_calloc(varsCount, rvSize);
 
-    for (int i=0; i<varsCount; i++) {
+    for (int i = 0; i < varsCount; i++) {
         UA_ReadValueId *readItem = &rValues[i];
         readItem->nodeId = nodeId[i];
         readItem->attributeId = UA_ATTRIBUTEID_VALUE;
@@ -282,14 +282,14 @@ static UA_StatusCode multiRead(UA_Client *client, const UA_NodeId *nodeId, UA_Va
 
     UA_ReadResponse response = UA_Client_Service_read(client, request);
     UA_StatusCode retval = response.responseHeader.serviceResult;
-    if(retval == UA_STATUSCODE_GOOD) {
-        if(response.resultsSize == varsCount)
+    if (retval == UA_STATUSCODE_GOOD) {
+        if (response.resultsSize == (size_t)varsCount)
             retval = response.results[0].status;
         else
             retval = UA_STATUSCODE_BADUNEXPECTEDERROR;
     }
 
-    if(retval != UA_STATUSCODE_GOOD) {
+    if (retval != UA_STATUSCODE_GOOD) {
         UA_ReadResponse_deleteMembers(&response);
         UA_free(rValues);
         return retval;
@@ -298,14 +298,14 @@ static UA_StatusCode multiRead(UA_Client *client, const UA_NodeId *nodeId, UA_Va
     /* Set the StatusCode */
     UA_DataValue *results = response.results;
 
-    if (response.resultsSize != varsCount) {
+    if (response.resultsSize != (size_t)varsCount) {
         retval = UA_STATUSCODE_BADUNEXPECTEDERROR;
         UA_ReadResponse_deleteMembers(&response);
         UA_free(rValues);
         return retval;
     }
 
-    for (int i=0; i<varsCount; i++) {
+    for (int i = 0; i < varsCount; i++) {
         if ((results[i].hasStatus && results[i].status != UA_STATUSCODE_GOOD) || !results[i].hasValue) {
             retval = UA_STATUSCODE_BADUNEXPECTEDERROR;
             UA_ReadResponse_deleteMembers(&response);
@@ -314,7 +314,7 @@ static UA_StatusCode multiRead(UA_Client *client, const UA_NodeId *nodeId, UA_Va
         }
     }
 
-    for (int i=0; i<varsCount; i++) {
+    for (int i = 0; i < varsCount; i++) {
         out[i] = results[i].value;
         UA_Variant_init(&results[i].value);
     }
@@ -331,7 +331,7 @@ static UA_StatusCode multiWrite(UA_Client *client, const UA_NodeId *nodeId, cons
 
     UA_WriteValue *wValues = UA_calloc(varsSize, wvSize);
 
-    for (int i=0; i<varsSize; i++) {
+    for (int i = 0; i < varsSize; i++) {
         UA_WriteValue *wValue = &wValues[i];
         wValue->attributeId = attributeId;
         wValue->nodeId = nodeId[i];
@@ -347,11 +347,11 @@ static UA_StatusCode multiWrite(UA_Client *client, const UA_NodeId *nodeId, cons
     UA_WriteResponse wResp = UA_Client_Service_write(client, wReq);
 
     UA_StatusCode retval = wResp.responseHeader.serviceResult;
-    if(retval == UA_STATUSCODE_GOOD) {
-        if(wResp.resultsSize == varsSize) {
+    if (retval == UA_STATUSCODE_GOOD) {
+        if (wResp.resultsSize == (size_t)varsSize) {
             retval = wResp.results[0];
 
-            for (int i=0; i<wResp.resultsSize; i++) {
+            for (size_t i = 0; i < wResp.resultsSize; i++) {
                 if (wResp.results[i] != UA_STATUSCODE_GOOD) {
                     retval = wResp.results[i];
                     // printf("%s\n", "multiWrite: bad result found");
@@ -444,7 +444,7 @@ static VALUE rb_readUaValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames) {
                 rubyVal = DBL2NUM(val);
             } else if (UA_Variant_hasScalarType(&readValues[i], &UA_TYPES[UA_TYPES_STRING])) {
                 UA_String val = *(UA_String*)readValues[i].data;
-                rubyVal = rb_utf8_str_new(val.data, val.length);
+                rubyVal = rb_utf8_str_new((const char *)val.data, val.length);
             } else {
                 rubyVal = Qnil; // unsupported
             }
@@ -880,7 +880,7 @@ static VALUE rb_readUaValue(VALUE self, VALUE v_nsIndex, VALUE v_name, int type)
         result = DBL2NUM(val);
     } else if (type == UA_TYPES_STRING && UA_Variant_hasScalarType(&value, &UA_TYPES[UA_TYPES_STRING])) {
         UA_String val =*(UA_String*)value.data;
-        result = rb_utf8_str_new(val.data, val.length);
+        result = rb_utf8_str_new((const char *)val.data, val.length);
     } else if (type == UA_TYPES_BYTE && UA_Variant_hasScalarType(&value, &UA_TYPES[UA_TYPES_BYTE])) {
         UA_Byte val = *(UA_Byte*)value.data;
         result = INT2FIX(val);
@@ -1016,7 +1016,7 @@ void Init_opcua_client()
     rb_define_method(cClient, "run_mon_cycle!", rb_run_single_monitoring_cycle_bang, 0);
     rb_define_method(cClient, "do_mon_cycle!", rb_run_single_monitoring_cycle_bang, 0);
 
-    rb_define_method(cClient, "connect", rb_connect, 1);
+    rb_define_method(cClient, "connect", rb_connect, -1);
     rb_define_method(cClient, "disconnect", rb_disconnect, 0);
     rb_define_method(cClient, "state", rb_state, 0);
 
