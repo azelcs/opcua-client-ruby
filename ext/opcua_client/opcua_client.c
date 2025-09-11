@@ -207,16 +207,21 @@ static VALUE rb_connect(int argc, VALUE *argv, VALUE self) {
         const char *password = StringValueCStr(v_password);
 
         // Set security policy and mode for username/password authentication
-        // config->securityMode = UA_MESSAGESECURITYMODE_SIGNANDENCRYPT;
-        // config->securityPolicyUri = UA_STRING_ALLOC("http://opcfoundation.org/UA/SecurityPolicy#Basic256Sha256");
+        config->securityMode = UA_MESSAGESECURITYMODE_SIGNANDENCRYPT;
+        config->securityPolicyUri = UA_STRING_ALLOC("http://opcfoundation.org/UA/SecurityPolicy#Basic256Sha256");
+
+        // UA_StatusCode policyStatus = UA_ClientConfig_addSecurityPolicyBasic256Sha256(config);
+        // if (policyStatus != UA_STATUSCODE_GOOD) {
+        //     return raise_ua_status_error(policyStatus);
+        // }
 
         // Connect with username and password
         status = UA_Client_connect_username(client, connectionString, username, password);
     } else {
         // Anonymous authentication
         // Set security policy to None for anonymous authentication
-        // config->securityMode = UA_MESSAGESECURITYMODE_NONE;
-        // config->securityPolicyUri = UA_STRING_ALLOC("http://opcfoundation.org/UA/SecurityPolicy#None");
+        config->securityMode = UA_MESSAGESECURITYMODE_NONE;
+        config->securityPolicyUri = UA_STRING_ALLOC("http://opcfoundation.org/UA/SecurityPolicy#None");
 
         // Connect anonymously
         status = UA_Client_connect(client, connectionString);
@@ -228,7 +233,6 @@ static VALUE rb_connect(int argc, VALUE *argv, VALUE self) {
         return raise_ua_status_error(status);
     }
 }
-
 
 static VALUE rb_createSubscription(VALUE self) {
     struct UninitializedClient * uclient;
