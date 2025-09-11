@@ -88,6 +88,39 @@ subscriptionInactivityCallback(UA_Client *client, UA_UInt32 subscriptionId, void
     // printf("Inactivity for subscription %u", subscriptionId);
 }
 
+static void
+stateCallback (UA_Client *client, UA_ClientState clientState) {
+    struct OpcuaClientContext *ctx = UA_Client_getContext(client);
+
+    switch(clientState) {
+        case UA_CLIENTSTATE_DISCONNECTED:
+            ; // printf("%s\n", "The client is disconnected");
+            break;
+        case UA_CLIENTSTATE_CONNECTED:
+            ; // printf("%s\n", "A TCP connection to the server is open");
+            break;
+        case UA_CLIENTSTATE_SECURECHANNEL:
+            ; // printf("%s\n", "A SecureChannel to the server is open");
+            break;
+        case UA_CLIENTSTATE_SESSION:
+            ; // printf("%s\n", "A new session was created!");
+            VALUE self = ctx->rubyClientInstance;
+
+            VALUE callback = rb_ivar_get(self, rb_intern("@callback_after_session_created"));
+            if (!NIL_P(callback)) {
+                VALUE params = rb_ary_new();
+                rb_ary_push(params, self);
+                rb_proc_call(callback, params); // rescue?
+            }
+
+            break;
+        case UA_CLIENTSTATE_SESSION_RENEWED:
+            /* The session was renewed. We don't need to recreate the subscription. */
+            break;
+    }
+    return;
+}
+
 static VALUE raise_invalid_arguments_error() {
     rb_raise(cError, "Invalid arguments");
     return Qnil;
@@ -129,22 +162,19 @@ static VALUE rb_initialize(VALUE self) {
     struct UninitializedClient *uclient;
     TypedData_Get_Struct(self, struct UninitializedClient, &UA_Client_Type, uclient);
 
-    // Initialize the client configuration
-    UA_ClientConfig customConfig;
-    UA_ClientConfig_setDefault(&customConfig);
+    uclient->client = UA_Client_new();
 
-    // Set the subscription inactivity callback
-    customConfig.subscriptionInactivityCallback = subscriptionInactivityCallback;
+    UA_ClientConfig *config = UA_Client_getConfig(uclient->client);
 
-    // Allocate and set the client context
+    config->stateCallback = stateCallback;
+
+    config->subscriptionInactivityCallback = subscriptionInactivityCallback;
+
     struct OpcuaClientContext *ctx = ALLOC(struct OpcuaClientContext);
     *ctx = (const struct OpcuaClientContext){ 0 };
 
     ctx->rubyClientInstance = self;
-    customConfig.clientContext = ctx;
-
-    // Create the client with the custom configuration
-    uclient->client = UA_Client_newWithConfig(&customConfig);
+    config->clientContext = ctx;
 
     return Qnil;
 }
@@ -167,43 +197,38 @@ static VALUE rb_connect(int argc, VALUE *argv, VALUE self) {
 
     UA_StatusCode status;
 
+    // Configure the client based on authentication type
+    UA_ClientConfig *config = UA_Client_getConfig(client);
+    UA_ClientConfig_setDefault(config);
+
     if (!NIL_P(v_username) && !NIL_P(v_password)) {
         // Username/password authentication
         const char *username = StringValueCStr(v_username);
         const char *password = StringValueCStr(v_password);
 
-        status = UA_Client_connectUsername(client, connectionString, username, password);
+        // Set security policy and mode for username/password authentication
+        config->securityMode = UA_MESSAGESECURITYMODE_SIGNANDENCRYPT;
+        config->securityPolicyUri = UA_STRING_ALLOC("http://opcfoundation.org/UA/SecurityPolicy#Basic256Sha256");
+
+        // Connect with username and password
+        status = UA_Client_connect_username(client, connectionString, username, password);
     } else {
         // Anonymous authentication
+        // Set security policy to None for anonymous authentication
+        config->securityMode = UA_MESSAGESECURITYMODE_NONE;
+        config->securityPolicyUri = UA_STRING_ALLOC("http://opcfoundation.org/UA/SecurityPolicy#None");
+
+        // Connect anonymously
         status = UA_Client_connect(client, connectionString);
     }
 
     if (status == UA_STATUSCODE_GOOD) {
-        // Check the client state after connecting
-        UA_SecureChannelState channelState;
-        UA_SessionState sessionState;
-        UA_StatusCode connectStatus;
-
-        // Retrieve the current client state
-        UA_Client_getState(client, &channelState, &sessionState, &connectStatus);
-
-        if (channelState == UA_SECURECHANNELSTATE_OPEN && sessionState == UA_SESSIONSTATE_ACTIVATED) {
-            // The client is connected, and the session is active
-            // VALUE callback = rb_ivar_get(self, rb_intern("@callback_after_session_created"));
-            // if (!NIL_P(callback)) {
-            //     VALUE params = rb_ary_new();
-            //     rb_ary_push(params, self);
-            //     rb_proc_call(callback, params);
-            // }
-        } else if (channelState == UA_SECURECHANNELSTATE_CLOSED) {
-            // Handle closed state
-            rb_raise(cError, "Client connection is closed after connecting");
-        }
         return Qnil;
     } else {
         return raise_ua_status_error(status);
     }
 }
+
 
 static VALUE rb_createSubscription(VALUE self) {
     struct UninitializedClient * uclient;
@@ -281,7 +306,7 @@ static UA_StatusCode multiRead(UA_Client *client, const UA_NodeId *nodeId, UA_Va
     }
 
     if (retval != UA_STATUSCODE_GOOD) {
-        UA_ReadResponse_delete(&response);
+        UA_ReadResponse_deleteMembers(&response);
         UA_free(rValues);
         return retval;
     }
@@ -291,7 +316,7 @@ static UA_StatusCode multiRead(UA_Client *client, const UA_NodeId *nodeId, UA_Va
 
     if (response.resultsSize != (size_t)varsCount) {
         retval = UA_STATUSCODE_BADUNEXPECTEDERROR;
-        UA_ReadResponse_delete(&response);
+        UA_ReadResponse_deleteMembers(&response);
         UA_free(rValues);
         return retval;
     }
@@ -299,7 +324,7 @@ static UA_StatusCode multiRead(UA_Client *client, const UA_NodeId *nodeId, UA_Va
     for (int i = 0; i < varsCount; i++) {
         if ((results[i].hasStatus && results[i].status != UA_STATUSCODE_GOOD) || !results[i].hasValue) {
             retval = UA_STATUSCODE_BADUNEXPECTEDERROR;
-            UA_ReadResponse_delete(&response);
+            UA_ReadResponse_deleteMembers(&response);
             UA_free(rValues);
             return retval;
         }
@@ -310,7 +335,7 @@ static UA_StatusCode multiRead(UA_Client *client, const UA_NodeId *nodeId, UA_Va
         UA_Variant_init(&results[i].value);
     }
 
-    UA_ReadResponse_delete(&response);
+    UA_ReadResponse_deleteMembers(&response);
     UA_free(rValues);
     return retval;
 }
@@ -361,7 +386,7 @@ static UA_StatusCode multiWrite(UA_Client *client, const UA_NodeId *nodeId, cons
         // printf("%s\n", "multiWrite: bad write");
     }
 
-    UA_WriteResponse_delete(&wResp);
+    UA_WriteResponse_deleteMembers(&wResp);
     UA_free(wValues);
 
     return retval;
@@ -445,7 +470,7 @@ static VALUE rb_readUaValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames) {
     } else {
         /* Clean up */
         for (int i=0; i<namesCount; i++) {
-            UA_Variant_clear(&readValues[i]);
+            UA_Variant_deleteMembers(&readValues[i]);
         }
         UA_free(nodes);
         UA_free(readValues);
@@ -455,7 +480,7 @@ static VALUE rb_readUaValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames) {
 
     /* Clean up */
     for (int i=0; i<namesCount; i++) {
-        UA_Variant_clear(&readValues[i]);
+        UA_Variant_deleteMembers(&readValues[i]);
     }
     UA_free(nodes);
     UA_free(readValues);
@@ -582,7 +607,7 @@ static VALUE rb_writeUaValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames, VAL
     } else {
         /* Clean up */
         for (int i=0; i<namesCount; i++) {
-            UA_Variant_clear(&values[i]);
+            UA_Variant_deleteMembers(&values[i]);
         }
         UA_free(nodes);
         UA_free(values);
@@ -592,7 +617,7 @@ static VALUE rb_writeUaValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames, VAL
 
     /* Clean up */
     for (int i=0; i<namesCount; i++) {
-        UA_Variant_clear(&values[i]);
+        UA_Variant_deleteMembers(&values[i]);
     }
     UA_free(nodes);
     UA_free(values);
@@ -706,12 +731,12 @@ static VALUE rb_writeUaValue(VALUE self, VALUE v_nsIndex, VALUE v_name, VALUE v_
         // printf("%s\n", "value write successful");
     } else {
         /* Clean up */
-        UA_Variant_clear(&value);
+        UA_Variant_deleteMembers(&value);
         return raise_ua_status_error(status);
     }
 
     /* Clean up */
-    UA_Variant_clear(&value);
+    UA_Variant_deleteMembers(&value);
 
     return Qnil;
 }
@@ -824,7 +849,7 @@ static VALUE rb_readUaValue(VALUE self, VALUE v_nsIndex, VALUE v_name, int type)
         // printf("%s\n", "value read successful");
     } else {
         /* Clean up */
-        UA_Variant_clear(&value);
+        UA_Variant_deleteMembers(&value);
         return raise_ua_status_error(status);
     }
 
@@ -881,7 +906,7 @@ static VALUE rb_readUaValue(VALUE self, VALUE v_nsIndex, VALUE v_name, int type)
     }
 
     /* Clean up */
-    UA_Variant_clear(&value);
+    UA_Variant_deleteMembers(&value);
 
     return result;
 }
@@ -941,22 +966,20 @@ static VALUE rb_get_human_UA_StatusCode(VALUE self, VALUE v_code) {
 }
 
 static VALUE rb_run_single_monitoring_cycle(VALUE self) {
-    struct UninitializedClient *uclient;
+    struct UninitializedClient * uclient;
     TypedData_Get_Struct(self, struct UninitializedClient, &UA_Client_Type, uclient);
     UA_Client *client = uclient->client;
 
-    // Run a single iteration of the client
-    UA_StatusCode status = UA_Client_run_iterate(client, true); // true = wait for the timeout
+    UA_StatusCode status = UA_Client_runAsync(client, 1000);
     return UINT2NUM(status);
 }
 
 static VALUE rb_run_single_monitoring_cycle_bang(VALUE self) {
-    struct UninitializedClient *uclient;
+    struct UninitializedClient * uclient;
     TypedData_Get_Struct(self, struct UninitializedClient, &UA_Client_Type, uclient);
     UA_Client *client = uclient->client;
 
-    // Run a single iteration of the client
-    UA_StatusCode status = UA_Client_run_iterate(client, true); // true = wait for the timeout
+    UA_StatusCode status = UA_Client_runAsync(client, 1000);
 
     if (status != UA_STATUSCODE_GOOD) {
         return raise_ua_status_error(status);
@@ -966,20 +989,20 @@ static VALUE rb_run_single_monitoring_cycle_bang(VALUE self) {
 }
 
 static VALUE rb_state(VALUE self) {
-    struct UninitializedClient *uclient;
+    struct UninitializedClient * uclient;
     TypedData_Get_Struct(self, struct UninitializedClient, &UA_Client_Type, uclient);
     UA_Client *client = uclient->client;
 
-    // Variables to hold the client state
-    UA_SecureChannelState channelState;
-    UA_SessionState sessionState;
-    UA_StatusCode connectStatus;
+    UA_ClientState state = UA_Client_getState(client);
+    return INT2NUM(state);
+}
 
-    // Retrieve the client state
-    UA_Client_getState(client, &channelState, &sessionState, &connectStatus);
-
-    // Return the secure channel state as an integer
-    return INT2NUM(channelState);
+static void defineStateContants(VALUE mOPCUAClient) {
+    rb_define_const(mOPCUAClient, "UA_CLIENTSTATE_DISCONNECTED", INT2NUM(UA_CLIENTSTATE_DISCONNECTED));
+    rb_define_const(mOPCUAClient, "UA_CLIENTSTATE_CONNECTED", INT2NUM(UA_CLIENTSTATE_CONNECTED));
+    rb_define_const(mOPCUAClient, "UA_CLIENTSTATE_SECURECHANNEL", INT2NUM(UA_CLIENTSTATE_SECURECHANNEL));
+    rb_define_const(mOPCUAClient, "UA_CLIENTSTATE_SESSION", INT2NUM(UA_CLIENTSTATE_SESSION));
+    rb_define_const(mOPCUAClient, "UA_CLIENTSTATE_SESSION_RENEWED", INT2NUM(UA_CLIENTSTATE_SESSION_RENEWED));
 }
 
 void Init_opcua_client()
@@ -990,6 +1013,7 @@ void Init_opcua_client()
 
     mOPCUAClient = rb_const_get(rb_cObject, rb_intern("OPCUAClient"));
     rb_global_variable(&mOPCUAClient);
+    defineStateContants(mOPCUAClient);
 
     cError = rb_define_class_under(mOPCUAClient, "Error", rb_eStandardError);
     rb_global_variable(&cError);
