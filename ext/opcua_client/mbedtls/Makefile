@@ -1,6 +1,7 @@
 CC = gcc
 AR = ar
 CFLAGS = -Iinclude -Wall -Wextra -O2
+CFLAGS += -fPIC
 LIBDIR = library
 OBJDIR = obj
 
