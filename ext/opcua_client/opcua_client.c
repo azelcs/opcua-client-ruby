@@ -270,6 +270,11 @@ static VALUE rb_initialize(VALUE self) {
     return Qnil;
 }
 
+// Helper function to check if a string value is nil or empty
+static bool is_empty_or_nil(VALUE val) {
+    return NIL_P(val) || (RB_TYPE_P(val, T_STRING) && RSTRING_LEN(val) == 0);
+}
+
 static VALUE rb_connect(int argc, VALUE *argv, VALUE self) {
     VALUE v_connectionString, v_username, v_password, v_client_cert, v_private_key;
 
@@ -290,9 +295,9 @@ static VALUE rb_connect(int argc, VALUE *argv, VALUE self) {
     UA_StatusCode status;
     UA_ClientConfig *config = UA_Client_getConfig(client);
 
-    // Use encryption if username/password AND certificates are provided
-    bool useEncryption = !NIL_P(v_username) && !NIL_P(v_password) &&
-                         !NIL_P(v_client_cert) && !NIL_P(v_private_key);
+    // Use encryption if username/password AND certificates are provided and not empty
+    bool useEncryption = !is_empty_or_nil(v_username) && !is_empty_or_nil(v_password) &&
+                         !is_empty_or_nil(v_client_cert) && !is_empty_or_nil(v_private_key);
 
     if (useEncryption) {
         printf("Setting up encrypted connection...\n");
@@ -342,7 +347,7 @@ static VALUE rb_connect(int argc, VALUE *argv, VALUE self) {
     UA_String_deleteMembers(&config->clientDescription.applicationUri);
     config->clientDescription.applicationUri = UA_STRING_NULL;
 
-    if (!NIL_P(v_username) && !NIL_P(v_password)) {
+    if (!is_empty_or_nil(v_username) && !is_empty_or_nil(v_password)) {
         // Username/password authentication
         const char *username = StringValueCStr(v_username);
         const char *password = StringValueCStr(v_password);
