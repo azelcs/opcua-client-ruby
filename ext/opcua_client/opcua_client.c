@@ -1,4 +1,6 @@
 #include <ruby.h>
+#include <stdlib.h>
+#include <string.h>
 #include "open62541.h"
 
 VALUE cClient;
@@ -12,6 +14,45 @@ struct UninitializedClient {
 struct OpcuaClientContext {
     VALUE rubyClientInstance;
 };
+
+UA_ByteString loadFile(const char *path) {
+    FILE *fp = fopen(path, "rb");
+    if (!fp) {
+        printf("Failed to open file: %s\n", path);
+        return UA_STRING_NULL;
+    }
+
+    // Seek to the end of the file to determine its size
+    fseek(fp, 0, SEEK_END);
+    size_t fileSize = ftell(fp);
+    rewind(fp);
+
+    // Allocate memory for the file contents
+    UA_ByteString fileContents;
+    fileContents.data = (uint8_t *)malloc(fileSize);
+    if (!fileContents.data) {
+        printf("Failed to allocate memory for file: %s\n", path);
+        fclose(fp);
+        return UA_STRING_NULL;
+    }
+
+    // Set the length of the ByteString
+    fileContents.length = fileSize;
+
+    // Read the file into the allocated memory
+    size_t bytesRead = fread(fileContents.data, 1, fileSize, fp);
+    if (bytesRead != fileSize) {
+        printf("Failed to read file: %s\n", path);
+        free(fileContents.data);
+        fileContents.data = NULL;
+        fileContents.length = 0;
+        fclose(fp);
+        return UA_STRING_NULL;
+    }
+
+    fclose(fp);
+    return fileContents;
+}
 
 static VALUE toRubyTime(UA_DateTime raw_date) {
     UA_DateTimeStruct dts = UA_DateTime_toStruct(raw_date);
@@ -180,12 +221,13 @@ static VALUE rb_initialize(VALUE self) {
 }
 
 static VALUE rb_connect(int argc, VALUE *argv, VALUE self) {
-    VALUE v_connectionString, v_username, v_password;
+    VALUE v_connectionString, v_username, v_password, v_client_cert, v_private_key;
 
-    // Require 1 arg (url), allow up to 3 (url, username, password)
-    rb_scan_args(argc, argv, "12", &v_connectionString, &v_username, &v_password);
+    // Require 1 arg (url), allow up to 5 (url, username, password, client_cert, private_key)
+    rb_scan_args(argc, argv, "14", &v_connectionString, &v_username, &v_password, &v_client_cert, &v_private_key);
 
     if (RB_TYPE_P(v_connectionString, T_STRING) != 1) {
+        printf("Invalid connection string provided.\n");
         return raise_invalid_arguments_error();
     }
 
@@ -196,40 +238,82 @@ static VALUE rb_connect(int argc, VALUE *argv, VALUE self) {
     UA_Client *client = uclient->client;
 
     UA_StatusCode status;
-
-    // Configure the client based on authentication type
     UA_ClientConfig *config = UA_Client_getConfig(client);
-    UA_ClientConfig_setDefault(config);
+
+    // Use encryption if username/password AND certificates are provided
+    bool useEncryption = !NIL_P(v_username) && !NIL_P(v_password) &&
+                         !NIL_P(v_client_cert) && !NIL_P(v_private_key);
+
+    if (useEncryption) {
+        printf("Setting up encrypted connection...\n");
+
+        // Validate certificate and private key parameters
+        if (RB_TYPE_P(v_client_cert, T_STRING) != 1 || RB_TYPE_P(v_private_key, T_STRING) != 1) {
+            printf("Invalid certificate or private key provided.\n");
+            return raise_invalid_arguments_error();
+        }
+
+        // Convert Ruby strings to UA_ByteString
+        char *cert_data = StringValueCStr(v_client_cert);
+        char *key_data = StringValueCStr(v_private_key);
+
+        UA_ByteString certificate;
+        certificate.length = RSTRING_LEN(v_client_cert);
+        certificate.data = (uint8_t *)malloc(certificate.length);
+        memcpy(certificate.data, cert_data, certificate.length);
+
+        UA_ByteString privateKey;
+        privateKey.length = RSTRING_LEN(v_private_key);
+        privateKey.data = (uint8_t *)malloc(privateKey.length);
+        memcpy(privateKey.data, key_data, privateKey.length);
+
+        // Configure encryption without server certificate validation
+        printf("Configuring encryption without server certificate validation...\n");
+        status = UA_ClientConfig_setDefaultEncryption(config, certificate, privateKey,
+                                                      NULL, 0, NULL, 0);
+
+        // Clean up certificate memory
+        UA_ByteString_clear(&certificate);
+        UA_ByteString_clear(&privateKey);
+
+        if (status != UA_STATUSCODE_GOOD) {
+            printf("Failed to set encryption configuration: %s\n", UA_StatusCode_name(status));
+            return raise_ua_status_error(status);
+        }
+
+        printf("Encryption configuration successful.\n");
+    } else {
+        printf("Setting up non-encrypted connection...\n");
+        // Use default configuration for non-encrypted connections
+        UA_ClientConfig_setDefault(config);
+    }
+
+    // Set a meaningful application URI
+    UA_String_deleteMembers(&config->clientDescription.applicationUri);
+    config->clientDescription.applicationUri = UA_STRING_ALLOC("urn:opcua.client.ruby");
 
     if (!NIL_P(v_username) && !NIL_P(v_password)) {
         // Username/password authentication
         const char *username = StringValueCStr(v_username);
         const char *password = StringValueCStr(v_password);
 
-        // Set security policy and mode for username/password authentication
-        config->securityMode = UA_MESSAGESECURITYMODE_SIGNANDENCRYPT;
-        config->securityPolicyUri = UA_STRING_ALLOC("http://opcfoundation.org/UA/SecurityPolicy#Basic256Sha256");
-
-        // UA_StatusCode policyStatus = UA_ClientConfig_addSecurityPolicyBasic256Sha256(config);
-        // if (policyStatus != UA_STATUSCODE_GOOD) {
-        //     return raise_ua_status_error(policyStatus);
-        // }
+        printf("Connecting with username/password authentication%s...\n", useEncryption ? " and encryption" : "");
 
         // Connect with username and password
         status = UA_Client_connect_username(client, connectionString, username, password);
     } else {
         // Anonymous authentication
-        // Set security policy to None for anonymous authentication
-        config->securityMode = UA_MESSAGESECURITYMODE_NONE;
-        config->securityPolicyUri = UA_STRING_ALLOC("http://opcfoundation.org/UA/SecurityPolicy#None");
+        printf("Connecting anonymously%s...\n", useEncryption ? " with encryption" : "");
 
         // Connect anonymously
         status = UA_Client_connect(client, connectionString);
     }
 
     if (status == UA_STATUSCODE_GOOD) {
+        printf("Connection successful!\n");
         return Qnil;
     } else {
+        printf("Connection failed: %s\n", UA_StatusCode_name(status));
         return raise_ua_status_error(status);
     }
 }
