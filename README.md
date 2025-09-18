@@ -48,6 +48,7 @@ end
 ### Available methods - connection:
 
 * ```client.connect(String url)``` - raises OPCUAClient::Error if unsuccessful
+* ``` client.connect(String url, String username, String password, String client_cert, String private_key)``` - authorized connection with username and password, with encryption enabled
 * ```client.disconnect => Fixnum``` - returns status
 
 ### Available methods - reads and writes:
