@@ -339,9 +339,8 @@ static VALUE rb_connect(int argc, VALUE *argv, VALUE self) {
         UA_ClientConfig_setDefault(config);
     }
 
-    // Set a meaningful application URI
     UA_String_deleteMembers(&config->clientDescription.applicationUri);
-    config->clientDescription.applicationUri = UA_STRING_ALLOC("urn:opcua.client.ruby");
+    config->clientDescription.applicationUri = UA_STRING_NULL;
 
     if (!NIL_P(v_username) && !NIL_P(v_password)) {
         // Username/password authentication
