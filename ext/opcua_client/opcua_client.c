@@ -1,6 +1,7 @@
 #include <ruby.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include "open62541.h"
 
 VALUE cClient;
@@ -52,6 +53,55 @@ UA_ByteString loadFile(const char *path) {
 
     fclose(fp);
     return fileContents;
+}
+
+UA_ByteString convertPemToDer(const char *pem_data, int is_private_key) {
+    // Create temporary files for conversion
+    char temp_pem_path[] = "/tmp/opcua_temp_pem_XXXXXX";
+    char temp_der_path[] = "/tmp/opcua_temp_der_XXXXXX";
+
+    int pem_fd = mkstemp(temp_pem_path);
+    int der_fd = mkstemp(temp_der_path);
+
+    if (pem_fd == -1 || der_fd == -1) {
+        printf("Failed to create temporary files\n");
+        if (pem_fd != -1) close(pem_fd);
+        if (der_fd != -1) close(der_fd);
+        return UA_STRING_NULL;
+    }
+
+    // Write PEM data to temporary file
+    write(pem_fd, pem_data, strlen(pem_data));
+    close(pem_fd);
+    close(der_fd);
+
+    // Convert PEM to DER using openssl
+    char command[512];
+    if (is_private_key) {
+        snprintf(command, sizeof(command),
+                "openssl rsa -outform DER -in %s -out %s 2>/dev/null",
+                temp_pem_path, temp_der_path);
+    } else {
+        snprintf(command, sizeof(command),
+                "openssl x509 -outform DER -in %s -out %s 2>/dev/null",
+                temp_pem_path, temp_der_path);
+    }
+
+    int result = system(command);
+
+    // Load the converted DER data
+    UA_ByteString der_data = UA_STRING_NULL;
+    if (result == 0) {
+        der_data = loadFile(temp_der_path);
+    } else {
+        printf("Failed to convert PEM to DER\n");
+    }
+
+    // Clean up temporary files
+    unlink(temp_pem_path);
+    unlink(temp_der_path);
+
+    return der_data;
 }
 
 static VALUE toRubyTime(UA_DateTime raw_date) {
@@ -253,22 +303,23 @@ static VALUE rb_connect(int argc, VALUE *argv, VALUE self) {
             return raise_invalid_arguments_error();
         }
 
-        // Convert Ruby strings to UA_ByteString
-        char *cert_data = StringValueCStr(v_client_cert);
-        char *key_data = StringValueCStr(v_private_key);
+        // Convert PEM certificates to DER format
+        char *cert_pem = StringValueCStr(v_client_cert);
+        char *key_pem = StringValueCStr(v_private_key);
 
-        UA_ByteString certificate;
-        certificate.length = RSTRING_LEN(v_client_cert);
-        certificate.data = (uint8_t *)malloc(certificate.length);
-        memcpy(certificate.data, cert_data, certificate.length);
+        printf("Converting PEM certificates to DER format...\n");
+        UA_ByteString certificate = convertPemToDer(cert_pem, 0); // 0 = certificate
+        UA_ByteString privateKey = convertPemToDer(key_pem, 1);   // 1 = private key
 
-        UA_ByteString privateKey;
-        privateKey.length = RSTRING_LEN(v_private_key);
-        privateKey.data = (uint8_t *)malloc(privateKey.length);
-        memcpy(privateKey.data, key_data, privateKey.length);
+        if (certificate.data == NULL || privateKey.data == NULL) {
+            printf("Failed to convert certificates to DER format.\n");
+            if (certificate.data) UA_ByteString_clear(&certificate);
+            if (privateKey.data) UA_ByteString_clear(&privateKey);
+            return raise_invalid_arguments_error();
+        }
 
         // Configure encryption without server certificate validation
-        printf("Configuring encryption without server certificate validation...\n");
+        printf("Configuring encryption...\n");
         status = UA_ClientConfig_setDefaultEncryption(config, certificate, privateKey,
                                                       NULL, 0, NULL, 0);
 
