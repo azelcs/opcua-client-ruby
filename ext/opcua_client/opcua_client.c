@@ -300,9 +300,15 @@ static VALUE rb_connect(int argc, VALUE *argv, VALUE self) {
     // Check if we need to avoid reconfiguring security policies for reconnection
     bool hasExistingSecurityPolicies = (config->securityPoliciesSize > 0);
 
-    // Check client state - only clear endpoint info if disconnected
+    // Check client state - only proceed with connection if not already in session
     UA_ClientState clientState = UA_Client_getState(client);
     bool isDisconnected = (clientState == UA_CLIENTSTATE_DISCONNECTED);
+
+    // If we're already connected/in session, return success immediately
+    if (clientState == UA_CLIENTSTATE_SESSION || clientState == UA_CLIENTSTATE_SESSION_RENEWED) {
+        printf("Client already has active session (state: %d), skipping connection...\n", clientState);
+        return Qnil;
+    }
 
     // Only clear cached endpoint info if we're actually disconnected
     // This prevents disrupting active sessions
@@ -312,7 +318,7 @@ static VALUE rb_connect(int argc, VALUE *argv, VALUE self) {
         UA_UserTokenPolicy_clear(&config->userTokenPolicy);
         UA_String_clear(&config->securityPolicyUri);
     } else {
-        printf("Client is connected, preserving endpoint configuration...\n");
+        printf("Client is connecting, preserving endpoint configuration...\n");
     }
 
     bool useEncryption = !is_empty_or_nil(v_username) && !is_empty_or_nil(v_password) &&
