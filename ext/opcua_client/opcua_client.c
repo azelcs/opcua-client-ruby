@@ -326,7 +326,7 @@ static VALUE rb_connect(int argc, VALUE *argv, VALUE self) {
 
     if (useEncryption) {
         printf("Setting up encrypted connection...\n");
-
+        printf("***CONNECTING***\n");
         if (hasExistingSecurityPolicies) {
             printf("Security policies already configured, skipping encryption setup...\n");
 
@@ -468,6 +468,7 @@ static VALUE rb_disconnect(VALUE self) {
     UA_Client *client = uclient->client;
 
     UA_StatusCode status = UA_Client_disconnect(client);
+    printf("***DISCONNECTING***\n");
     return RB_UINT2NUM(status);
 }
 
@@ -1076,6 +1077,14 @@ static VALUE rb_readUaValue(VALUE self, VALUE v_nsIndex, VALUE v_name, int type)
     } else if (type == UA_TYPES_UINT32 && UA_Variant_hasScalarType(&value, &UA_TYPES[UA_TYPES_UINT32])) {
         UA_UInt32 val =*(UA_UInt32*)value.data;
         result = INT2FIX(val);
+    } else if (type == UA_TYPES_BOOLEAN && UA_Variant_hasArrayType(&value, &UA_TYPES[UA_TYPES_BOOLEAN])) {
+        size_t arrayLength = value.arrayLength;
+        UA_Boolean *arrayData = (UA_Boolean *)value.data;
+
+        result = rb_ary_new();
+        for (size_t i = 0; i < arrayLength; i++) {
+            rb_ary_push(result, arrayData[i] ? Qtrue : Qfalse);
+        }
     } else if (type == UA_TYPES_BOOLEAN && UA_Variant_hasScalarType(&value, &UA_TYPES[UA_TYPES_BOOLEAN])) {
         UA_Boolean val =*(UA_Boolean*)value.data;
         result = val ? Qtrue : Qfalse;
@@ -1144,6 +1153,10 @@ static VALUE rb_readStringValue(VALUE self, VALUE v_nsIndex, VALUE v_name) {
 
 static VALUE rb_readByteValue(VALUE self, VALUE v_nsIndex, VALUE v_name) {
     return rb_readUaValue(self, v_nsIndex, v_name, UA_TYPES_BYTE);
+}
+
+static VALUE rb_readBooleanList(VALUE self, VALUE v_nsIndex, VALUE v_name) {
+    return rb_readUaValue(self, v_nsIndex, v_name, UA_TYPES_BOOLEAN);
 }
 
 static VALUE rb_get_human_UA_StatusCode(VALUE self, VALUE v_code) {
@@ -1239,6 +1252,7 @@ void Init_opcua_client()
     rb_define_method(cClient, "read_byte", rb_readByteValue, 2);
     rb_define_method(cClient, "read_uint32_list", rb_readUint32List, 2);
     rb_define_method(cClient, "read_int32_list", rb_readInt32List, 2);
+    rb_define_method(cClient, "read_boolean_list", rb_readBooleanList, 2);
 
     rb_define_method(cClient, "write_int16", rb_writeInt16Value, 3);
     rb_define_method(cClient, "write_uint16", rb_writeUInt16Value, 3);
