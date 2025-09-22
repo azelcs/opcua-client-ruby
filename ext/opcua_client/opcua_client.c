@@ -300,11 +300,20 @@ static VALUE rb_connect(int argc, VALUE *argv, VALUE self) {
     // Check if we need to avoid reconfiguring security policies for reconnection
     bool hasExistingSecurityPolicies = (config->securityPoliciesSize > 0);
 
-    // Clear cached endpoint and user token policy to force fresh endpoint discovery
-    // This ensures proper endpoint negotiation on each connection
-    UA_EndpointDescription_clear(&config->endpoint);
-    UA_UserTokenPolicy_clear(&config->userTokenPolicy);
-    UA_String_clear(&config->securityPolicyUri);
+    // Check client state - only clear endpoint info if disconnected
+    UA_ClientState clientState = UA_Client_getState(client);
+    bool isDisconnected = (clientState == UA_CLIENTSTATE_DISCONNECTED);
+
+    // Only clear cached endpoint info if we're actually disconnected
+    // This prevents disrupting active sessions
+    if (isDisconnected) {
+        printf("Client is disconnected, clearing endpoint cache for fresh discovery...\n");
+        UA_EndpointDescription_clear(&config->endpoint);
+        UA_UserTokenPolicy_clear(&config->userTokenPolicy);
+        UA_String_clear(&config->securityPolicyUri);
+    } else {
+        printf("Client is connected, preserving endpoint configuration...\n");
+    }
 
     bool useEncryption = !is_empty_or_nil(v_username) && !is_empty_or_nil(v_password) &&
                          !is_empty_or_nil(v_client_cert) && !is_empty_or_nil(v_private_key);
