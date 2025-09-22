@@ -297,17 +297,11 @@ static VALUE rb_connect(int argc, VALUE *argv, VALUE self) {
 
     struct OpcuaClientContext *existing_ctx = (struct OpcuaClientContext *)config->clientContext;
 
-    if (config->securityPolicies != NULL) {
-        for (size_t i = 0; i < config->securityPoliciesSize; i++) {
-            if (config->securityPolicies[i].deleteMembers) {
-                config->securityPolicies[i].deleteMembers(&config->securityPolicies[i]);
-            }
-        }
-        UA_free(config->securityPolicies);
-        config->securityPolicies = NULL;
-        config->securityPoliciesSize = 0;
-    }
+    // Check if we need to avoid reconfiguring security policies for reconnection
+    bool hasExistingSecurityPolicies = (config->securityPoliciesSize > 0);
 
+    // Clear cached endpoint and user token policy to force fresh endpoint discovery
+    // This ensures proper endpoint negotiation on each connection
     UA_EndpointDescription_clear(&config->endpoint);
     UA_UserTokenPolicy_clear(&config->userTokenPolicy);
     UA_String_clear(&config->securityPolicyUri);
@@ -318,53 +312,64 @@ static VALUE rb_connect(int argc, VALUE *argv, VALUE self) {
     if (useEncryption) {
         printf("Setting up encrypted connection...\n");
 
-        // Validate certificate and private key parameters
-        if (RB_TYPE_P(v_client_cert, T_STRING) != 1 || RB_TYPE_P(v_private_key, T_STRING) != 1) {
-            printf("Invalid certificate or private key provided.\n");
-            return raise_invalid_arguments_error();
+        if (hasExistingSecurityPolicies) {
+            printf("Security policies already configured, skipping encryption setup...\n");
+
+            config->stateCallback = stateCallback;
+            config->subscriptionInactivityCallback = subscriptionInactivityCallback;
+            config->clientContext = existing_ctx;
+        } else {
+            // First-time encryption setup
+            // Validate certificate and private key parameters
+            if (RB_TYPE_P(v_client_cert, T_STRING) != 1 || RB_TYPE_P(v_private_key, T_STRING) != 1) {
+                printf("Invalid certificate or private key provided.\n");
+                return raise_invalid_arguments_error();
+            }
+
+            // Convert PEM certificates to DER format
+            char *cert_pem = StringValueCStr(v_client_cert);
+            char *key_pem = StringValueCStr(v_private_key);
+
+            printf("Converting PEM certificates to DER format...\n");
+            UA_ByteString certificate = convertPemToDer(cert_pem, 0); // 0 = certificate
+            UA_ByteString privateKey = convertPemToDer(key_pem, 1);   // 1 = private key
+
+            if (certificate.data == NULL || privateKey.data == NULL) {
+                printf("Failed to convert certificates to DER format.\n");
+                if (certificate.data) UA_ByteString_clear(&certificate);
+                if (privateKey.data) UA_ByteString_clear(&privateKey);
+                return raise_invalid_arguments_error();
+            }
+
+            printf("Configuring encryption...\n");
+            status = UA_ClientConfig_setDefaultEncryption(config, certificate, privateKey,
+                                                          NULL, 0, NULL, 0);
+
+            UA_ByteString_clear(&certificate);
+            UA_ByteString_clear(&privateKey);
+
+            if (status != UA_STATUSCODE_GOOD) {
+                printf("Failed to set encryption configuration: %s\n", UA_StatusCode_name(status));
+                return raise_ua_status_error(status);
+            }
+
+            config->stateCallback = stateCallback;
+            config->subscriptionInactivityCallback = subscriptionInactivityCallback;
+            config->clientContext = existing_ctx;
+
+            printf("Encryption configuration successful.\n");
         }
-
-        // Convert PEM certificates to DER format
-        char *cert_pem = StringValueCStr(v_client_cert);
-        char *key_pem = StringValueCStr(v_private_key);
-
-        printf("Converting PEM certificates to DER format...\n");
-        UA_ByteString certificate = convertPemToDer(cert_pem, 0); // 0 = certificate
-        UA_ByteString privateKey = convertPemToDer(key_pem, 1);   // 1 = private key
-
-        if (certificate.data == NULL || privateKey.data == NULL) {
-            printf("Failed to convert certificates to DER format.\n");
-            if (certificate.data) UA_ByteString_clear(&certificate);
-            if (privateKey.data) UA_ByteString_clear(&privateKey);
-            return raise_invalid_arguments_error();
-        }
-
-        // Configure encryption without server certificate validation
-        printf("Configuring encryption...\n");
-        status = UA_ClientConfig_setDefaultEncryption(config, certificate, privateKey,
-                                                      NULL, 0, NULL, 0);
-
-        // Clean up certificate memory
-        UA_ByteString_clear(&certificate);
-        UA_ByteString_clear(&privateKey);
-
-        if (status != UA_STATUSCODE_GOOD) {
-            printf("Failed to set encryption configuration: %s\n", UA_StatusCode_name(status));
-            return raise_ua_status_error(status);
-        }
-
-        config->stateCallback = stateCallback;
-        config->subscriptionInactivityCallback = subscriptionInactivityCallback;
-        config->clientContext = existing_ctx;
-
-        printf("Encryption configuration successful.\n");
     } else {
         printf("Setting up non-encrypted connection...\n");
-        // Set default configuration for non-encrypted connections
-        status = UA_ClientConfig_setDefault(config);
-        if (status != UA_STATUSCODE_GOOD) {
-            printf("Failed to set default configuration: %s\n", UA_StatusCode_name(status));
-            return raise_ua_status_error(status);
+
+        if (!hasExistingSecurityPolicies) {
+            status = UA_ClientConfig_setDefault(config);
+            if (status != UA_STATUSCODE_GOOD) {
+                printf("Failed to set default configuration: %s\n", UA_StatusCode_name(status));
+                return raise_ua_status_error(status);
+            }
+        } else {
+            printf("Security policies already exist, skipping default config setup...\n");
         }
 
         config->stateCallback = stateCallback;
