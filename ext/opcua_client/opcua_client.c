@@ -295,7 +295,23 @@ static VALUE rb_connect(int argc, VALUE *argv, VALUE self) {
     UA_StatusCode status;
     UA_ClientConfig *config = UA_Client_getConfig(client);
 
-    // Use encryption if username/password AND certificates are provided and not empty
+    struct OpcuaClientContext *existing_ctx = (struct OpcuaClientContext *)config->clientContext;
+
+    if (config->securityPolicies != NULL) {
+        for (size_t i = 0; i < config->securityPoliciesSize; i++) {
+            if (config->securityPolicies[i].deleteMembers) {
+                config->securityPolicies[i].deleteMembers(&config->securityPolicies[i]);
+            }
+        }
+        UA_free(config->securityPolicies);
+        config->securityPolicies = NULL;
+        config->securityPoliciesSize = 0;
+    }
+
+    UA_EndpointDescription_clear(&config->endpoint);
+    UA_UserTokenPolicy_clear(&config->userTokenPolicy);
+    UA_String_clear(&config->securityPolicyUri);
+
     bool useEncryption = !is_empty_or_nil(v_username) && !is_empty_or_nil(v_password) &&
                          !is_empty_or_nil(v_client_cert) && !is_empty_or_nil(v_private_key);
 
@@ -337,11 +353,23 @@ static VALUE rb_connect(int argc, VALUE *argv, VALUE self) {
             return raise_ua_status_error(status);
         }
 
+        config->stateCallback = stateCallback;
+        config->subscriptionInactivityCallback = subscriptionInactivityCallback;
+        config->clientContext = existing_ctx;
+
         printf("Encryption configuration successful.\n");
     } else {
         printf("Setting up non-encrypted connection...\n");
-        // Use default configuration for non-encrypted connections
-        UA_ClientConfig_setDefault(config);
+        // Set default configuration for non-encrypted connections
+        status = UA_ClientConfig_setDefault(config);
+        if (status != UA_STATUSCODE_GOOD) {
+            printf("Failed to set default configuration: %s\n", UA_StatusCode_name(status));
+            return raise_ua_status_error(status);
+        }
+
+        config->stateCallback = stateCallback;
+        config->subscriptionInactivityCallback = subscriptionInactivityCallback;
+        config->clientContext = existing_ctx;
     }
 
     UA_String_deleteMembers(&config->clientDescription.applicationUri);
