@@ -2,6 +2,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <errno.h>
+#include <mbedtls/pem.h>
+#include <mbedtls/x509_crt.h>
+#include <mbedtls/pk.h>
+#include <mbedtls/base64.h>
 #include "open62541.h"
 
 VALUE cClient;
@@ -56,55 +61,92 @@ UA_ByteString loadFile(const char *path) {
 }
 
 UA_ByteString convertPemToDer(const char *pem_data, int is_private_key) {
-    // Create temporary files for conversion
-    char temp_pem_path[] = "/tmp/opcua_temp_pem_XXXXXX";
-    char temp_der_path[] = "/tmp/opcua_temp_der_XXXXXX";
-
-    int pem_fd = mkstemp(temp_pem_path);
-    int der_fd = mkstemp(temp_der_path);
-
-    if (pem_fd == -1 || der_fd == -1) {
-        printf("Failed to create temporary files\n");
-        if (pem_fd != -1) close(pem_fd);
-        if (der_fd != -1) close(der_fd);
-        return UA_STRING_NULL;
-    }
-
-    // Write PEM data to temporary file
-    write(pem_fd, pem_data, strlen(pem_data));
-    close(pem_fd);
-    close(der_fd);
-
-    // Convert PEM to DER using openssl
-    char command[512];
-    if (is_private_key) {
-        snprintf(command, sizeof(command),
-                "openssl rsa -outform DER -in %s -out %s 2>/dev/null",
-                temp_pem_path, temp_der_path);
-    } else {
-        snprintf(command, sizeof(command),
-                "openssl x509 -outform DER -in %s -out %s 2>/dev/null",
-                temp_pem_path, temp_der_path);
-    }
-
-    int result = system(command);
-
-    // Load the converted DER data
     UA_ByteString der_data = UA_STRING_NULL;
-    if (result == 0) {
-        der_data = loadFile(temp_der_path);
-    } else {
-        printf("Failed to convert PEM to DER\n");
-    }
+    int ret = 0;
 
-    // Clean up temporary files
-    unlink(temp_pem_path);
-    unlink(temp_der_path);
+    printf("Converting PEM to DER using mbedtls library...\n");
+
+    if (is_private_key) {
+        // Handle private key conversion
+        mbedtls_pk_context pk;
+        mbedtls_pk_init(&pk);
+
+        // Parse PEM private key
+        ret = mbedtls_pk_parse_key(&pk, (const unsigned char *)pem_data, strlen(pem_data) + 1, NULL, 0);
+        if (ret != 0) {
+            printf("Failed to parse PEM private key, mbedtls error: -0x%04x\n", -ret);
+            mbedtls_pk_free(&pk);
+            return UA_STRING_NULL;
+        }
+
+        // Allocate buffer with a reasonable size for DER private key (typically < 2KB)
+        size_t der_len = 2048;
+        unsigned char *der_buffer = malloc(der_len);
+        if (!der_buffer) {
+            printf("Failed to allocate memory for DER private key\n");
+            mbedtls_pk_free(&pk);
+            return UA_STRING_NULL;
+        }
+
+        // Write DER data - the function writes from the end of buffer backwards
+        ret = mbedtls_pk_write_key_der(&pk, der_buffer, der_len);
+        if (ret <= 0) {
+            printf("Failed to write DER private key, mbedtls error: -0x%04x\n", -ret);
+            free(der_buffer);
+            mbedtls_pk_free(&pk);
+            return UA_STRING_NULL;
+        }
+
+        // The actual DER data starts at (der_buffer + der_len - ret) and has length ret
+        size_t actual_der_len = ret;
+        unsigned char *actual_der_start = der_buffer + der_len - ret;
+
+        // Allocate the exact amount needed and copy
+        der_data.data = (uint8_t *)malloc(actual_der_len);
+        if (!der_data.data) {
+            printf("Failed to allocate final DER buffer\n");
+            free(der_buffer);
+            mbedtls_pk_free(&pk);
+            return UA_STRING_NULL;
+        }
+
+        memcpy(der_data.data, actual_der_start, actual_der_len);
+        der_data.length = actual_der_len;
+
+        free(der_buffer);
+        mbedtls_pk_free(&pk);
+
+        printf("Successfully converted private key from PEM to DER, size: %lu bytes\n", der_data.length);
+    } else {
+        // Handle certificate conversion
+        mbedtls_x509_crt crt;
+        mbedtls_x509_crt_init(&crt);
+
+        // Parse PEM certificate
+        ret = mbedtls_x509_crt_parse(&crt, (const unsigned char *)pem_data, strlen(pem_data) + 1);
+        if (ret != 0) {
+            printf("Failed to parse PEM certificate, mbedtls error: -0x%04x\n", -ret);
+            mbedtls_x509_crt_free(&crt);
+            return UA_STRING_NULL;
+        }
+
+        // The certificate's DER data is already available in the parsed structure
+        der_data.data = (uint8_t *)malloc(crt.raw.len);
+        if (!der_data.data) {
+            printf("Failed to allocate memory for DER certificate\n");
+            mbedtls_x509_crt_free(&crt);
+            return UA_STRING_NULL;
+        }
+
+        memcpy(der_data.data, crt.raw.p, crt.raw.len);
+        der_data.length = crt.raw.len;
+        mbedtls_x509_crt_free(&crt);
+
+        printf("Successfully converted certificate from PEM to DER, size: %lu bytes\n", der_data.length);
+    }
 
     return der_data;
-}
-
-static VALUE toRubyTime(UA_DateTime raw_date) {
+}static VALUE toRubyTime(UA_DateTime raw_date) {
     UA_DateTimeStruct dts = UA_DateTime_toStruct(raw_date);
     VALUE year = UINT2NUM(dts.year);
     VALUE month = UINT2NUM(dts.month);
