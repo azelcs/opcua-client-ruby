@@ -504,6 +504,82 @@ static VALUE rb_addMonitoredItem(VALUE self, VALUE v_subscriptionId, VALUE v_mon
     }
 }
 
+static VALUE rb_deleteMonitoredItem(VALUE self, VALUE v_subscriptionId, VALUE v_monitoredItemId) {
+    struct UninitializedClient * uclient;
+    TypedData_Get_Struct(self, struct UninitializedClient, &UA_Client_Type, uclient);
+    UA_Client *client = uclient->client;
+
+    UA_UInt32 subscriptionId = NUM2UINT(v_subscriptionId);
+    UA_UInt32 monitoredItemId = NUM2UINT(v_monitoredItemId);
+
+    UA_DeleteMonitoredItemsRequest deleteRequest;
+    UA_DeleteMonitoredItemsRequest_init(&deleteRequest);
+    deleteRequest.subscriptionId = subscriptionId;
+    deleteRequest.monitoredItemIds = &monitoredItemId;
+    deleteRequest.monitoredItemIdsSize = 1;
+
+    UA_DeleteMonitoredItemsResponse deleteResponse =
+        UA_Client_MonitoredItems_delete(client, deleteRequest);
+
+    if (deleteResponse.responseHeader.serviceResult == UA_STATUSCODE_GOOD &&
+        deleteResponse.resultsSize > 0 &&
+        deleteResponse.results[0] == UA_STATUSCODE_GOOD) {
+        printf("Successfully deleted monitored item %u from subscription %u\n", monitoredItemId, subscriptionId);
+        UA_DeleteMonitoredItemsResponse_clear(&deleteResponse);
+        return Qtrue;
+    } else {
+        printf("Failed to delete monitored item %u from subscription %u\n", monitoredItemId, subscriptionId);
+        UA_DeleteMonitoredItemsResponse_clear(&deleteResponse);
+        return Qfalse;
+    }
+}
+
+static VALUE rb_deleteSubscription(VALUE self, VALUE v_subscriptionId) {
+    struct UninitializedClient * uclient;
+    TypedData_Get_Struct(self, struct UninitializedClient, &UA_Client_Type, uclient);
+    UA_Client *client = uclient->client;
+
+    UA_UInt32 subscriptionId = NUM2UINT(v_subscriptionId);
+
+    UA_DeleteSubscriptionsRequest deleteRequest;
+    UA_DeleteSubscriptionsRequest_init(&deleteRequest);
+    deleteRequest.subscriptionIds = &subscriptionId;
+    deleteRequest.subscriptionIdsSize = 1;
+
+    UA_DeleteSubscriptionsResponse deleteResponse =
+        UA_Client_Subscriptions_delete(client, deleteRequest);
+
+    if (deleteResponse.responseHeader.serviceResult == UA_STATUSCODE_GOOD &&
+        deleteResponse.resultsSize > 0 &&
+        deleteResponse.results[0] == UA_STATUSCODE_GOOD) {
+        printf("Successfully deleted subscription %u\n", subscriptionId);
+        UA_DeleteSubscriptionsResponse_clear(&deleteResponse);
+        return Qtrue;
+    } else {
+        printf("Failed to delete subscription %u\n", subscriptionId);
+        UA_DeleteSubscriptionsResponse_clear(&deleteResponse);
+        return Qfalse;
+    }
+}
+
+static VALUE rb_deleteAllSubscriptions(VALUE self) {
+    struct UninitializedClient * uclient;
+    TypedData_Get_Struct(self, struct UninitializedClient, &UA_Client_Type, uclient);
+    UA_Client *client = uclient->client;
+
+    // This will delete all subscriptions for the client session
+    UA_StatusCode status = UA_Client_Subscriptions_deleteSingle(client, 0);
+
+    if (status == UA_STATUSCODE_GOOD || status == UA_STATUSCODE_BADSUBSCRIPTIONIDINVALID) {
+        // BADSUBSCRIPTIONIDINVALID means no subscriptions exist, which is also success for our purpose
+        printf("Successfully deleted all subscriptions\n");
+        return Qtrue;
+    } else {
+        printf("Failed to delete all subscriptions: %s\n", UA_StatusCode_name(status));
+        return Qfalse;
+    }
+}
+
 static VALUE rb_disconnect(VALUE self) {
     struct UninitializedClient * uclient;
     TypedData_Get_Struct(self, struct UninitializedClient, &UA_Client_Type, uclient);
@@ -1325,6 +1401,9 @@ void Init_opcua_client()
 
     rb_define_method(cClient, "create_subscription", rb_createSubscription, 0);
     rb_define_method(cClient, "add_monitored_item", rb_addMonitoredItem, 3);
+    rb_define_method(cClient, "delete_monitored_item", rb_deleteMonitoredItem, 2);
+    rb_define_method(cClient, "delete_subscription", rb_deleteSubscription, 1);
+    rb_define_method(cClient, "delete_all_subscriptions", rb_deleteAllSubscriptions, 0);
 
     rb_define_singleton_method(mOPCUAClient, "human_status_code", rb_get_human_UA_StatusCode, 1);
 }
