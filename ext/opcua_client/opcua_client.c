@@ -1203,6 +1203,10 @@ static VALUE rb_writeInt64Value(VALUE self, VALUE v_nsIndex, VALUE v_name, VALUE
     return rb_writeUaValue(self, v_nsIndex, v_name, v_newValue, UA_TYPES_INT64);
 }
 
+static VALUE rb_writeInt64Values(VALUE self, VALUE v_nsIndex, VALUE v_aryNames, VALUE v_aryNewValues) {
+    return rb_writeUaValues(self, v_nsIndex, v_aryNames, v_aryNewValues, UA_TYPES_INT64);
+}
+
 static VALUE rb_readUaValue(VALUE self, VALUE v_nsIndex, VALUE v_name, int type) {
     if (RB_TYPE_P(v_name, T_STRING) != 1) {
         return raise_invalid_arguments_error();
@@ -1355,6 +1359,78 @@ static VALUE rb_readInt64Value(VALUE self, VALUE v_nsIndex, VALUE v_name) {
     return rb_readUaValue(self, v_nsIndex, v_name, UA_TYPES_INT64);
 }
 
+static VALUE rb_readInt64Values(VALUE self, VALUE v_nsIndex, VALUE v_aryNames) {
+    if (RB_TYPE_P(v_nsIndex, T_FIXNUM) != 1) {
+        return raise_invalid_arguments_error();
+    }
+
+    Check_Type(v_aryNames, T_ARRAY);
+    const long namesCount = RARRAY_LEN(v_aryNames);
+
+    int nsIndex = FIX2INT(v_nsIndex);
+
+    struct UninitializedClient * uclient;
+    TypedData_Get_Struct(self, struct UninitializedClient, &UA_Client_Type, uclient);
+    UA_Client *client = uclient->client;
+
+    UA_UInt16 nidSize = UA_TYPES[UA_TYPES_NODEID].memSize;
+    UA_UInt16 variantSize = UA_TYPES[UA_TYPES_VARIANT].memSize;
+
+    UA_NodeId *nodes = UA_calloc(namesCount, nidSize);
+    UA_Variant *readValues = UA_calloc(namesCount, variantSize);
+
+    for (int i=0; i<namesCount; i++) {
+        VALUE v_name = rb_ary_entry(v_aryNames, i);
+
+        if (RB_TYPE_P(v_name, T_STRING) != 1) {
+            return raise_invalid_arguments_error();
+        }
+
+        char *name = StringValueCStr(v_name);
+        nodes[i] = UA_NODEID_STRING(nsIndex, name);
+    }
+
+    UA_StatusCode status = multiRead(client, nodes, readValues, namesCount);
+
+    VALUE resultArray = Qnil;
+
+    if (status == UA_STATUSCODE_GOOD) {
+        resultArray = rb_ary_new2(namesCount);
+
+        for (int i=0; i<namesCount; i++) {
+            VALUE rubyVal = Qnil;
+
+            if (UA_Variant_hasScalarType(&readValues[i], &UA_TYPES[UA_TYPES_INT64])) {
+                UA_Int64 val = *(UA_Int64*)readValues[i].data;
+                rubyVal = LL2NUM(val);
+            } else {
+                rb_raise(cError, "UA type mismatch - expected INT64");
+                return Qnil;
+            }
+
+            rb_ary_push(resultArray, rubyVal);
+        }
+    } else {
+        /* Clean up */
+        for (int i=0; i<namesCount; i++) {
+            UA_Variant_deleteMembers(&readValues[i]);
+        }
+        UA_free(nodes);
+        UA_free(readValues);
+
+        return raise_ua_status_error(status);
+    }
+
+    /* Clean up */
+    for (int i=0; i<namesCount; i++) {
+        UA_Variant_deleteMembers(&readValues[i]);
+    }
+    UA_free(nodes);
+    UA_free(readValues);
+
+    return resultArray;
+}
+
 static VALUE rb_readBooleanList(VALUE self, VALUE v_nsIndex, VALUE v_name) {
     return rb_readUaValue(self, v_nsIndex, v_name, UA_TYPES_BOOLEAN);
 }
@@ -1481,9 +1557,11 @@ void Init_opcua_client()
     rb_define_method(cClient, "multi_write_bool", rb_writeBooleanValues, 3);
     rb_define_method(cClient, "multi_write_string", rb_writeStringValues, 3);
     rb_define_method(cClient, "multi_write_byte", rb_writeByteValues, 3);
+    rb_define_method(cClient, "multi_write_int64", rb_writeInt64Values, 3);
     rb_define_method(cClient, "multi_write_int32_list", rb_writeInt32ListValues, 3);
 
     rb_define_method(cClient, "multi_read", rb_readUaValues, 2);
+    rb_define_method(cClient, "multi_read_int64", rb_readInt64Values, 2);
 
     rb_define_method(cClient, "create_subscription", rb_createSubscription, 0);
     rb_define_method(cClient, "add_monitored_item", rb_addMonitoredItem, 3);
