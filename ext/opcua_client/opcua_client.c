@@ -146,7 +146,9 @@ UA_ByteString convertPemToDer(const char *pem_data, int is_private_key) {
     }
 
     return der_data;
-}static VALUE toRubyTime(UA_DateTime raw_date) {
+}
+
+static VALUE toRubyTime(UA_DateTime raw_date) {
     UA_DateTimeStruct dts = UA_DateTime_toStruct(raw_date);
     VALUE year = UINT2NUM(dts.year);
     VALUE month = UINT2NUM(dts.month);
@@ -158,6 +160,40 @@ UA_ByteString convertPemToDer(const char *pem_data, int is_private_key) {
     VALUE cDate = rb_const_get(rb_cObject, rb_intern("Time"));
     VALUE rb_date = rb_funcall(cDate, rb_intern("gm"), 7, year, month, day, hour, min, sec, millis);
     return rb_date;
+}
+
+static UA_DateTime fromRubyTime(VALUE ruby_time) {
+    // Handle both Time objects and numeric values (milliseconds)
+    if (RB_TYPE_P(ruby_time, T_FIXNUM) || RB_TYPE_P(ruby_time, T_BIGNUM)) {
+        // Treat as milliseconds and convert to UA_DateTime
+        long long milliseconds = NUM2LL(ruby_time);
+        return milliseconds * UA_DATETIME_MSEC;
+    } else if (rb_obj_is_kind_of(ruby_time, rb_cTime)) {
+        // Ruby Time object - extract components
+        VALUE year = rb_funcall(ruby_time, rb_intern("year"), 0);
+        VALUE month = rb_funcall(ruby_time, rb_intern("month"), 0);
+        VALUE day = rb_funcall(ruby_time, rb_intern("day"), 0);
+        VALUE hour = rb_funcall(ruby_time, rb_intern("hour"), 0);
+        VALUE min = rb_funcall(ruby_time, rb_intern("min"), 0);
+        VALUE sec = rb_funcall(ruby_time, rb_intern("sec"), 0);
+        VALUE usec = rb_funcall(ruby_time, rb_intern("usec"), 0);
+
+        // Convert to UA_DateTime using Unix timestamp approach
+        VALUE unix_time = rb_funcall(ruby_time, rb_intern("to_i"), 0);
+        long long unix_seconds = NUM2LL(unix_time);
+        long long microseconds = NUM2LL(usec);
+
+        // Convert Unix timestamp to OPC UA DateTime
+        // OPC UA DateTime is 100-nanosecond intervals since January 1, 1601 UTC
+        UA_DateTime ua_time = (unix_seconds * UA_DATETIME_SEC) + UA_DATETIME_UNIX_EPOCH;
+        ua_time += microseconds * UA_DATETIME_USEC;
+
+        return ua_time;
+    } else {
+        // Fallback: treat as numeric milliseconds
+        double ms = NUM2DBL(ruby_time);
+        return (UA_DateTime)(ms * UA_DATETIME_MSEC);
+    }
 }
 
 static void
@@ -759,6 +795,9 @@ static VALUE rb_readUaValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames) {
             } else if (UA_Variant_hasScalarType(&readValues[i], &UA_TYPES[UA_TYPES_UINT32])) {
                 UA_UInt32 val = *(UA_UInt32*)readValues[i].data;
                 rubyVal = INT2FIX(val);
+            } else if (UA_Variant_hasScalarType(&readValues[i], &UA_TYPES[UA_TYPES_INT64])) {
+                UA_Int64 val = *(UA_Int64*)readValues[i].data;
+                rubyVal = LL2NUM(val);
             } else if (UA_Variant_hasScalarType(&readValues[i], &UA_TYPES[UA_TYPES_BOOLEAN])) {
                 UA_Boolean val = *(UA_Boolean*)readValues[i].data;
                 rubyVal = val ? Qtrue : Qfalse;
@@ -771,6 +810,12 @@ static VALUE rb_readUaValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames) {
             } else if (UA_Variant_hasScalarType(&readValues[i], &UA_TYPES[UA_TYPES_STRING])) {
                 UA_String val = *(UA_String*)readValues[i].data;
                 rubyVal = rb_utf8_str_new((const char *)val.data, val.length);
+            } else if (UA_Variant_hasScalarType(&readValues[i], &UA_TYPES[UA_TYPES_DATETIME])) {
+                UA_DateTime val = *(UA_DateTime*)readValues[i].data;
+                rubyVal = toRubyTime(val);
+            } else if (UA_Variant_hasScalarType(&readValues[i], &UA_TYPES[UA_TYPES_UTCTIME])) {
+                UA_UtcTime val = *(UA_UtcTime*)readValues[i].data;
+                rubyVal = toRubyTime(val);  // UA_UtcTime is same as UA_DateTime
             } else {
                 rubyVal = Qnil; // unsupported
             }
@@ -872,6 +917,11 @@ static VALUE rb_writeUaValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames, VAL
             UA_Int32 newValue = NUM2INT(v_newValue);
             values[i].data = UA_malloc(sizeof(UA_Int32));
             *(UA_Int32*)values[i].data = newValue;
+            values[i].type = &UA_TYPES[uaType];
+        } else if (uaType == UA_TYPES_INT64) {
+            UA_Int64 newValue = NUM2LL(v_newValue);
+            values[i].data = UA_malloc(sizeof(UA_Int64));
+            *(UA_Int64*)values[i].data = newValue;
             values[i].type = &UA_TYPES[uaType];
         } else if (uaType == UA_TYPES_FLOAT) {
             Check_Type(v_newValue, T_FLOAT);
@@ -1004,6 +1054,11 @@ static VALUE rb_writeUaValue(VALUE self, VALUE v_nsIndex, VALUE v_name, VALUE v_
         value.data = UA_malloc(sizeof(UA_UInt32));
         *(UA_UInt32*)value.data = newValue;
         value.type = &UA_TYPES[UA_TYPES_UINT32];
+    } else if (uaType == UA_TYPES_INT64) {
+        UA_Int64 newValue = NUM2LL(v_newValue);
+        value.data = UA_malloc(sizeof(UA_Int64));
+        *(UA_Int64*)value.data = newValue;
+        value.type = &UA_TYPES[UA_TYPES_INT64];
     } else if (uaType == UA_TYPES_FLOAT) {
         UA_Float newValue = NUM2DBL(v_newValue);
         value.data = UA_malloc(sizeof(UA_Float));
@@ -1030,6 +1085,11 @@ static VALUE rb_writeUaValue(VALUE self, VALUE v_nsIndex, VALUE v_name, VALUE v_
         value.data = UA_malloc(sizeof(UA_Byte));
         *(UA_Byte*)value.data = newValue;
         value.type = &UA_TYPES[UA_TYPES_BYTE];
+    } else if (uaType == UA_TYPES_DATETIME) {
+        UA_DateTime newValue = fromRubyTime(v_newValue);
+        value.data = UA_malloc(sizeof(UA_DateTime));
+        *(UA_DateTime*)value.data = newValue;
+        value.type = &UA_TYPES[UA_TYPES_DATETIME];
     }
     else {
         rb_raise(cError, "Unsupported type");
@@ -1135,6 +1195,14 @@ static VALUE rb_writeByteValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames, V
     return rb_writeUaValues(self, v_nsIndex, v_aryNames, v_aryNewValues, UA_TYPES_BYTE);
 }
 
+static VALUE rb_writeTimeValue(VALUE self, VALUE v_nsIndex, VALUE v_name, VALUE v_newValue) {
+    return rb_writeUaValue(self, v_nsIndex, v_name, v_newValue, UA_TYPES_DATETIME);
+}
+
+static VALUE rb_writeInt64Value(VALUE self, VALUE v_nsIndex, VALUE v_name, VALUE v_newValue) {
+    return rb_writeUaValue(self, v_nsIndex, v_name, v_newValue, UA_TYPES_INT64);
+}
+
 static VALUE rb_readUaValue(VALUE self, VALUE v_nsIndex, VALUE v_name, int type) {
     if (RB_TYPE_P(v_name, T_STRING) != 1) {
         return raise_invalid_arguments_error();
@@ -1195,6 +1263,9 @@ static VALUE rb_readUaValue(VALUE self, VALUE v_nsIndex, VALUE v_name, int type)
     } else if (type == UA_TYPES_UINT32 && UA_Variant_hasScalarType(&value, &UA_TYPES[UA_TYPES_UINT32])) {
         UA_UInt32 val =*(UA_UInt32*)value.data;
         result = INT2FIX(val);
+    } else if (type == UA_TYPES_INT64 && UA_Variant_hasScalarType(&value, &UA_TYPES[UA_TYPES_INT64])) {
+        UA_Int64 val = *(UA_Int64*)value.data;
+        result = LL2NUM(val);
     } else if (type == UA_TYPES_BOOLEAN && UA_Variant_hasArrayType(&value, &UA_TYPES[UA_TYPES_BOOLEAN])) {
         size_t arrayLength = value.arrayLength;
         UA_Boolean *arrayData = (UA_Boolean *)value.data;
@@ -1218,6 +1289,9 @@ static VALUE rb_readUaValue(VALUE self, VALUE v_nsIndex, VALUE v_name, int type)
     } else if (type == UA_TYPES_BYTE && UA_Variant_hasScalarType(&value, &UA_TYPES[UA_TYPES_BYTE])) {
         UA_Byte val = *(UA_Byte*)value.data;
         result = INT2FIX(val);
+    } else if (type == UA_TYPES_DATETIME && UA_Variant_hasScalarType(&value, &UA_TYPES[UA_TYPES_DATETIME])) {
+        UA_DateTime val = *(UA_DateTime*)value.data;
+        result = toRubyTime(val);
     } else {
         rb_raise(cError, "UA type mismatch");
         return Qnil;
@@ -1271,6 +1345,14 @@ static VALUE rb_readStringValue(VALUE self, VALUE v_nsIndex, VALUE v_name) {
 
 static VALUE rb_readByteValue(VALUE self, VALUE v_nsIndex, VALUE v_name) {
     return rb_readUaValue(self, v_nsIndex, v_name, UA_TYPES_BYTE);
+}
+
+static VALUE rb_readTimeValue(VALUE self, VALUE v_nsIndex, VALUE v_name) {
+    return rb_readUaValue(self, v_nsIndex, v_name, UA_TYPES_DATETIME);
+}
+
+static VALUE rb_readInt64Value(VALUE self, VALUE v_nsIndex, VALUE v_name) {
+    return rb_readUaValue(self, v_nsIndex, v_name, UA_TYPES_INT64);
 }
 
 static VALUE rb_readBooleanList(VALUE self, VALUE v_nsIndex, VALUE v_name) {
@@ -1368,6 +1450,8 @@ void Init_opcua_client()
     rb_define_method(cClient, "read_bool", rb_readBooleanValue, 2);
     rb_define_method(cClient, "read_string", rb_readStringValue, 2);
     rb_define_method(cClient, "read_byte", rb_readByteValue, 2);
+    rb_define_method(cClient, "read_time", rb_readTimeValue, 2);
+    rb_define_method(cClient, "read_int64", rb_readInt64Value, 2);
     rb_define_method(cClient, "read_uint32_list", rb_readUint32List, 2);
     rb_define_method(cClient, "read_int32_list", rb_readInt32List, 2);
     rb_define_method(cClient, "read_boolean_list", rb_readBooleanList, 2);
@@ -1382,6 +1466,8 @@ void Init_opcua_client()
     rb_define_method(cClient, "write_bool", rb_writeBooleanValue, 3);
     rb_define_method(cClient, "write_string", rb_writeStringValue, 3);
     rb_define_method(cClient, "write_byte", rb_writeByteValue, 3);
+    rb_define_method(cClient, "write_time", rb_writeTimeValue, 3);
+    rb_define_method(cClient, "write_int64", rb_writeInt64Value, 3);
     rb_define_method(cClient, "write_uint32_list", rb_writeUint32List, 3);
     rb_define_method(cClient, "write_int32_list", rb_writeInt32List, 3);
 
