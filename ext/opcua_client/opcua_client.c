@@ -843,6 +843,109 @@ static VALUE rb_readUaValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames) {
     return resultArray;
 }
 
+static VALUE rb_readUaValuesNumeric(VALUE self, VALUE v_nsIndex, VALUE v_aryNodeIds) {
+    if (RB_TYPE_P(v_nsIndex, T_FIXNUM) != 1) {
+        return raise_invalid_arguments_error();
+    }
+
+    Check_Type(v_aryNodeIds, T_ARRAY);
+    const long nodeIdsCount = RARRAY_LEN(v_aryNodeIds);
+
+    int nsIndex = FIX2INT(v_nsIndex);
+
+    struct UninitializedClient * uclient;
+    TypedData_Get_Struct(self, struct UninitializedClient, &UA_Client_Type, uclient);
+    UA_Client *client = uclient->client;
+
+    UA_UInt16 nidSize = UA_TYPES[UA_TYPES_NODEID].memSize;
+    UA_UInt16 variantSize = UA_TYPES[UA_TYPES_VARIANT].memSize;
+
+    UA_NodeId *nodes = UA_calloc(nodeIdsCount, nidSize);
+    UA_Variant *readValues = UA_calloc(nodeIdsCount, variantSize);
+
+    for (int i=0; i<nodeIdsCount; i++) {
+        VALUE v_nodeId = rb_ary_entry(v_aryNodeIds, i);
+
+        if (RB_TYPE_P(v_nodeId, T_FIXNUM) != 1) {
+            UA_free(nodes);
+            UA_free(readValues);
+            return raise_invalid_arguments_error();
+        }
+
+        UA_UInt32 numericId = NUM2UINT(v_nodeId);
+        nodes[i] = UA_NODEID_NUMERIC(nsIndex, numericId);
+    }
+
+    UA_StatusCode status = multiRead(client, nodes, readValues, nodeIdsCount);
+
+    VALUE resultArray = Qnil;
+
+    if (status == UA_STATUSCODE_GOOD) {
+        resultArray = rb_ary_new2(nodeIdsCount);
+
+        for (int i=0; i<nodeIdsCount; i++) {
+            VALUE rubyVal = Qnil;
+
+            if (UA_Variant_hasScalarType(&readValues[i], &UA_TYPES[UA_TYPES_INT16])) {
+                UA_Int16 val = *(UA_Int16*)readValues[i].data;
+                rubyVal = INT2FIX(val);
+            } else if (UA_Variant_hasScalarType(&readValues[i], &UA_TYPES[UA_TYPES_UINT16])) {
+                UA_UInt16 val = *(UA_UInt16*)readValues[i].data;
+                rubyVal = INT2FIX(val);
+            } else if (UA_Variant_hasScalarType(&readValues[i], &UA_TYPES[UA_TYPES_INT32])) {
+                UA_Int32 val = *(UA_Int32*)readValues[i].data;
+                rubyVal = INT2FIX(val);
+            } else if (UA_Variant_hasScalarType(&readValues[i], &UA_TYPES[UA_TYPES_UINT32])) {
+                UA_UInt32 val = *(UA_UInt32*)readValues[i].data;
+                rubyVal = INT2FIX(val);
+            } else if (UA_Variant_hasScalarType(&readValues[i], &UA_TYPES[UA_TYPES_INT64])) {
+                UA_Int64 val = *(UA_Int64*)readValues[i].data;
+                rubyVal = LL2NUM(val);
+            } else if (UA_Variant_hasScalarType(&readValues[i], &UA_TYPES[UA_TYPES_BOOLEAN])) {
+                UA_Boolean val = *(UA_Boolean*)readValues[i].data;
+                rubyVal = val ? Qtrue : Qfalse;
+            } else if (UA_Variant_hasScalarType(&readValues[i], &UA_TYPES[UA_TYPES_FLOAT])) {
+                UA_Float val = *(UA_Float*)readValues[i].data;
+                rubyVal = DBL2NUM(val);
+            } else if (UA_Variant_hasScalarType(&readValues[i], &UA_TYPES[UA_TYPES_DOUBLE])) {
+                UA_Float val = *(UA_Double*)readValues[i].data;
+                rubyVal = DBL2NUM(val);
+            } else if (UA_Variant_hasScalarType(&readValues[i], &UA_TYPES[UA_TYPES_STRING])) {
+                UA_String val = *(UA_String*)readValues[i].data;
+                rubyVal = rb_utf8_str_new((const char *)val.data, val.length);
+            } else if (UA_Variant_hasScalarType(&readValues[i], &UA_TYPES[UA_TYPES_DATETIME])) {
+                UA_DateTime val = *(UA_DateTime*)readValues[i].data;
+                rubyVal = toRubyTime(val);
+            } else if (UA_Variant_hasScalarType(&readValues[i], &UA_TYPES[UA_TYPES_UTCTIME])) {
+                UA_UtcTime val = *(UA_UtcTime*)readValues[i].data;
+                rubyVal = toRubyTime(val);  // UA_UtcTime is same as UA_DateTime
+            } else {
+                rubyVal = Qnil; // unsupported
+            }
+
+            rb_ary_push(resultArray, rubyVal);
+        }
+    } else {
+        /* Clean up */
+        for (int i=0; i<nodeIdsCount; i++) {
+            UA_Variant_deleteMembers(&readValues[i]);
+        }
+        UA_free(nodes);
+        UA_free(readValues);
+
+        return raise_ua_status_error(status);
+    }
+
+    /* Clean up */
+    for (int i=0; i<nodeIdsCount; i++) {
+        UA_Variant_deleteMembers(&readValues[i]);
+    }
+    UA_free(nodes);
+    UA_free(readValues);
+
+    return resultArray;
+}
+
 static VALUE rb_writeUaValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames, VALUE v_aryNewValues, int uaType) {
     if (RB_TYPE_P(v_nsIndex, T_FIXNUM) != 1) {
         return raise_invalid_arguments_error();
@@ -1606,6 +1709,7 @@ void Init_opcua_client()
     rb_define_method(cClient, "multi_write_int32_list", rb_writeInt32ListValues, 3);
 
     rb_define_method(cClient, "multi_read", rb_readUaValues, 2);
+    rb_define_method(cClient, "multi_read_numeric", rb_readUaValuesNumeric, 2);
     rb_define_method(cClient, "multi_read_int64", rb_readInt64Values, 2);
 
     rb_define_method(cClient, "create_subscription", rb_createSubscription, 0);
