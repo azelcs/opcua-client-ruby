@@ -48,6 +48,7 @@ RSpec.describe OPCUAClient::Client do
 
     around(:each) do |example|
       server_pid = spawn('tools/server/opcua-server') # Launch server
+      sleep 0.3 # Give the server a moment to bind the socket before connecting
       example.run
       Process.kill('TERM', server_pid) # Stop server
     end

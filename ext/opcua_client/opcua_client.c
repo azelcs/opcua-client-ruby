@@ -11,7 +11,17 @@
 
 VALUE cClient;
 VALUE cError;
+VALUE cConnectionError;
+VALUE cNodeError;
+VALUE cTypeMismatchError;
+VALUE cProtocolError;
+VALUE cArgumentError;
 VALUE mOPCUAClient;
+
+/* Diagnostic logging is silent unless OPCUA_CLIENT_DEBUG is set in the
+   environment (read once in Init_opcua_client). Use DBG() instead of DBG(). */
+static int g_debug = 0;
+#define DBG(...) do { if (g_debug) { printf(__VA_ARGS__); fflush(stdout); } } while (0)
 
 struct UninitializedClient {
     UA_Client *client;
@@ -24,7 +34,7 @@ struct OpcuaClientContext {
 UA_ByteString loadFile(const char *path) {
     FILE *fp = fopen(path, "rb");
     if (!fp) {
-        printf("Failed to open file: %s\n", path);
+        DBG("Failed to open file: %s\n", path);
         return UA_STRING_NULL;
     }
 
@@ -37,7 +47,7 @@ UA_ByteString loadFile(const char *path) {
     UA_ByteString fileContents;
     fileContents.data = (uint8_t *)malloc(fileSize);
     if (!fileContents.data) {
-        printf("Failed to allocate memory for file: %s\n", path);
+        DBG("Failed to allocate memory for file: %s\n", path);
         fclose(fp);
         return UA_STRING_NULL;
     }
@@ -48,7 +58,7 @@ UA_ByteString loadFile(const char *path) {
     // Read the file into the allocated memory
     size_t bytesRead = fread(fileContents.data, 1, fileSize, fp);
     if (bytesRead != fileSize) {
-        printf("Failed to read file: %s\n", path);
+        DBG("Failed to read file: %s\n", path);
         free(fileContents.data);
         fileContents.data = NULL;
         fileContents.length = 0;
@@ -64,7 +74,7 @@ UA_ByteString convertPemToDer(const char *pem_data, int is_private_key) {
     UA_ByteString der_data = UA_STRING_NULL;
     int ret = 0;
 
-    printf("Converting PEM to DER using mbedtls library...\n");
+    DBG("Converting PEM to DER using mbedtls library...\n");
 
     if (is_private_key) {
         // Handle private key conversion
@@ -74,7 +84,7 @@ UA_ByteString convertPemToDer(const char *pem_data, int is_private_key) {
         // Parse PEM private key
         ret = mbedtls_pk_parse_key(&pk, (const unsigned char *)pem_data, strlen(pem_data) + 1, NULL, 0);
         if (ret != 0) {
-            printf("Failed to parse PEM private key, mbedtls error: -0x%04x\n", -ret);
+            DBG("Failed to parse PEM private key, mbedtls error: -0x%04x\n", -ret);
             mbedtls_pk_free(&pk);
             return UA_STRING_NULL;
         }
@@ -83,7 +93,7 @@ UA_ByteString convertPemToDer(const char *pem_data, int is_private_key) {
         size_t der_len = 2048;
         unsigned char *der_buffer = malloc(der_len);
         if (!der_buffer) {
-            printf("Failed to allocate memory for DER private key\n");
+            DBG("Failed to allocate memory for DER private key\n");
             mbedtls_pk_free(&pk);
             return UA_STRING_NULL;
         }
@@ -91,7 +101,7 @@ UA_ByteString convertPemToDer(const char *pem_data, int is_private_key) {
         // Write DER data - the function writes from the end of buffer backwards
         ret = mbedtls_pk_write_key_der(&pk, der_buffer, der_len);
         if (ret <= 0) {
-            printf("Failed to write DER private key, mbedtls error: -0x%04x\n", -ret);
+            DBG("Failed to write DER private key, mbedtls error: -0x%04x\n", -ret);
             free(der_buffer);
             mbedtls_pk_free(&pk);
             return UA_STRING_NULL;
@@ -104,7 +114,7 @@ UA_ByteString convertPemToDer(const char *pem_data, int is_private_key) {
         // Allocate the exact amount needed and copy
         der_data.data = (uint8_t *)malloc(actual_der_len);
         if (!der_data.data) {
-            printf("Failed to allocate final DER buffer\n");
+            DBG("Failed to allocate final DER buffer\n");
             free(der_buffer);
             mbedtls_pk_free(&pk);
             return UA_STRING_NULL;
@@ -116,7 +126,7 @@ UA_ByteString convertPemToDer(const char *pem_data, int is_private_key) {
         free(der_buffer);
         mbedtls_pk_free(&pk);
 
-        printf("Successfully converted private key from PEM to DER, size: %lu bytes\n", der_data.length);
+        DBG("Successfully converted private key from PEM to DER, size: %lu bytes\n", der_data.length);
     } else {
         // Handle certificate conversion
         mbedtls_x509_crt crt;
@@ -125,7 +135,7 @@ UA_ByteString convertPemToDer(const char *pem_data, int is_private_key) {
         // Parse PEM certificate
         ret = mbedtls_x509_crt_parse(&crt, (const unsigned char *)pem_data, strlen(pem_data) + 1);
         if (ret != 0) {
-            printf("Failed to parse PEM certificate, mbedtls error: -0x%04x\n", -ret);
+            DBG("Failed to parse PEM certificate, mbedtls error: -0x%04x\n", -ret);
             mbedtls_x509_crt_free(&crt);
             return UA_STRING_NULL;
         }
@@ -133,7 +143,7 @@ UA_ByteString convertPemToDer(const char *pem_data, int is_private_key) {
         // The certificate's DER data is already available in the parsed structure
         der_data.data = (uint8_t *)malloc(crt.raw.len);
         if (!der_data.data) {
-            printf("Failed to allocate memory for DER certificate\n");
+            DBG("Failed to allocate memory for DER certificate\n");
             mbedtls_x509_crt_free(&crt);
             return UA_STRING_NULL;
         }
@@ -142,7 +152,7 @@ UA_ByteString convertPemToDer(const char *pem_data, int is_private_key) {
         der_data.length = crt.raw.len;
         mbedtls_x509_crt_free(&crt);
 
-        printf("Successfully converted certificate from PEM to DER, size: %lu bytes\n", der_data.length);
+        DBG("Successfully converted certificate from PEM to DER, size: %lu bytes\n", der_data.length);
     }
 
     return der_data;
@@ -249,12 +259,12 @@ handler_dataChanged(UA_Client *client, UA_UInt32 subId, void *subContext,
 
 static void
 deleteSubscriptionCallback(UA_Client *client, UA_UInt32 subscriptionId, void *subscriptionContext) {
-    // printf("Subscription Id %u was deleted\n", subscriptionId);
+    // DBG("Subscription Id %u was deleted\n", subscriptionId);
 }
 
 static void
 subscriptionInactivityCallback(UA_Client *client, UA_UInt32 subscriptionId, void *subContext) {
-    // printf("Inactivity for subscription %u", subscriptionId);
+    // DBG("Inactivity for subscription %u", subscriptionId);
 }
 
 static void
@@ -263,16 +273,16 @@ stateCallback (UA_Client *client, UA_ClientState clientState) {
 
     switch(clientState) {
         case UA_CLIENTSTATE_DISCONNECTED:
-            ; // printf("%s\n", "The client is disconnected");
+            ; // DBG("%s\n", "The client is disconnected");
             break;
         case UA_CLIENTSTATE_CONNECTED:
-            ; // printf("%s\n", "A TCP connection to the server is open");
+            ; // DBG("%s\n", "A TCP connection to the server is open");
             break;
         case UA_CLIENTSTATE_SECURECHANNEL:
-            ; // printf("%s\n", "A SecureChannel to the server is open");
+            ; // DBG("%s\n", "A SecureChannel to the server is open");
             break;
         case UA_CLIENTSTATE_SESSION:
-            ; // printf("%s\n", "A new session was created!");
+            ; // DBG("%s\n", "A new session was created!");
             VALUE self = ctx->rubyClientInstance;
 
             VALUE callback = rb_ivar_get(self, rb_intern("@callback_after_session_created"));
@@ -290,18 +300,99 @@ stateCallback (UA_Client *client, UA_ClientState clientState) {
     return;
 }
 
-static VALUE raise_invalid_arguments_error() {
-    rb_raise(cError, "Invalid arguments");
-    return Qnil;
+/* Single source of truth mapping a UA_StatusCode to an operational category.
+   open62541 1.0.x ships the constants but no severity/category helper, so we
+   enumerate the families the robot realistically returns. Anything unlisted
+   falls through to CAT_PROTOCOL (a safe default: never mis-typed as a link
+   failure). */
+typedef enum { CAT_CONNECTION, CAT_NODE, CAT_TYPE, CAT_PROTOCOL } StatusCategory;
+
+static StatusCategory status_category(UA_StatusCode s) {
+    switch (s) {
+        /* ---- connection / session / channel / transport ---- */
+        case UA_STATUSCODE_BADCOMMUNICATIONERROR:
+        case UA_STATUSCODE_BADTIMEOUT:
+        case UA_STATUSCODE_BADSHUTDOWN:
+        case UA_STATUSCODE_BADSERVERNOTCONNECTED:
+        case UA_STATUSCODE_BADSERVERHALTED:
+        case UA_STATUSCODE_BADSECURECHANNELIDINVALID:
+        case UA_STATUSCODE_BADSESSIONIDINVALID:
+        case UA_STATUSCODE_BADSESSIONCLOSED:
+        case UA_STATUSCODE_BADSESSIONNOTACTIVATED:
+        case UA_STATUSCODE_BADSECURECHANNELCLOSED:
+        case UA_STATUSCODE_BADSECURECHANNELTOKENUNKNOWN:
+        case UA_STATUSCODE_BADNOTCONNECTED:
+        case UA_STATUSCODE_BADCONNECTIONREJECTED:
+        case UA_STATUSCODE_BADDISCONNECT:
+        case UA_STATUSCODE_BADCONNECTIONCLOSED:
+            return CAT_CONNECTION;
+        /* ---- node / addressing ---- */
+        case UA_STATUSCODE_BADNODEIDINVALID:
+        case UA_STATUSCODE_BADNODEIDUNKNOWN:
+        case UA_STATUSCODE_BADATTRIBUTEIDINVALID:
+        case UA_STATUSCODE_BADINDEXRANGEINVALID:
+        case UA_STATUSCODE_BADINDEXRANGENODATA:
+        case UA_STATUSCODE_BADNOTFOUND:
+            return CAT_NODE;
+        /* ---- type / value ---- */
+        case UA_STATUSCODE_BADTYPEMISMATCH:
+        case UA_STATUSCODE_BADOUTOFRANGE:
+        case UA_STATUSCODE_BADDATATYPEIDUNKNOWN:
+            return CAT_TYPE;
+        /* ---- everything else (BadUnexpectedError, BadInternalError, ...) ---- */
+        default:
+            return CAT_PROTOCOL;
+    }
 }
 
+static VALUE class_for_category(StatusCategory c) {
+    switch (c) {
+        case CAT_CONNECTION: return cConnectionError;
+        case CAT_NODE:       return cNodeError;
+        case CAT_TYPE:       return cTypeMismatchError;
+        default:             return cProtocolError;
+    }
+}
+
+/* Build a classified exception carrying structured data, then raise it.
+   rb_raise() can't attach ivars, so we construct the object first. The message
+   string is kept byte-identical to the previous "%u: %s" format so any existing
+   string matching keeps working. node_index is the failing slot in a multi_*
+   call, or -1 (-> nil) for single-node / service-level failures. */
+static VALUE raise_ua_status(UA_StatusCode status, long node_index) {
+    VALUE klass = class_for_category(status_category(status));
+    const char *name = UA_StatusCode_name(status);
+    VALUE exc = rb_exc_new_str(klass, rb_sprintf("%u: %s", status, name));
+    rb_iv_set(exc, "@status_code", UINT2NUM(status));
+    rb_iv_set(exc, "@status_name", rb_str_new_cstr(name));
+    rb_iv_set(exc, "@node_index", node_index >= 0 ? LONG2NUM(node_index) : Qnil);
+    rb_exc_raise(exc);
+    return Qnil; /* unreached */
+}
+
+/* Client-side errors that have no UA status code (caller misuse, undecodable
+   type). status_code is nil; status_name carries the message. */
+static VALUE raise_client_error(VALUE klass, const char *msg) {
+    VALUE exc = rb_exc_new_str(klass, rb_str_new_cstr(msg));
+    rb_iv_set(exc, "@status_code", Qnil);
+    rb_iv_set(exc, "@status_name", rb_str_new_cstr(msg));
+    rb_iv_set(exc, "@node_index", Qnil);
+    rb_exc_raise(exc);
+    return Qnil; /* unreached */
+}
+
+static VALUE raise_invalid_arguments_error() {
+    return raise_client_error(cArgumentError, "Invalid arguments");
+}
+
+/* Thin wrapper so existing single-node call sites compile unchanged; the
+   status code drives classification, node_index is nil. */
 static VALUE raise_ua_status_error(UA_StatusCode status) {
-    rb_raise(cError, "%u: %s", status, UA_StatusCode_name(status));
-    return Qnil;
+    return raise_ua_status(status, -1);
 }
 
 static void UA_Client_free(void *self) {
-    // printf("free client\n");
+    // DBG("free client\n");
     struct UninitializedClient *uclient = self;
 
     if (uclient->client) {
@@ -320,7 +411,7 @@ static const rb_data_type_t UA_Client_Type = {
 };
 
 static VALUE allocate(VALUE klass) {
-    // printf("allocate client\n");
+    // DBG("allocate client\n");
     struct UninitializedClient *uclient = ALLOC(struct UninitializedClient);
     *uclient = (const struct UninitializedClient){ 0 };
 
@@ -353,6 +444,18 @@ static bool is_empty_or_nil(VALUE val) {
     return NIL_P(val) || (RB_TYPE_P(val, T_STRING) && RSTRING_LEN(val) == 0);
 }
 
+// Type predicates for write-value validation. Used to reject non-numeric Ruby
+// args with a rescuable OPCUAClient::ArgumentError instead of a bare ::TypeError
+// from NUM2LL/NUM2DBL. value_is_numeric accepts whatever those accept (Integer
+// or Float), so accepted-input behaviour is unchanged.
+static bool value_is_integer(VALUE val) {
+    return RB_TYPE_P(val, T_FIXNUM) == 1 || RB_TYPE_P(val, T_BIGNUM) == 1;
+}
+
+static bool value_is_numeric(VALUE val) {
+    return rb_obj_is_kind_of(val, rb_cNumeric) == Qtrue;
+}
+
 static VALUE rb_connect(int argc, VALUE *argv, VALUE self) {
     VALUE v_connectionString, v_username, v_password, v_client_cert, v_private_key;
 
@@ -360,7 +463,7 @@ static VALUE rb_connect(int argc, VALUE *argv, VALUE self) {
     rb_scan_args(argc, argv, "14", &v_connectionString, &v_username, &v_password, &v_client_cert, &v_private_key);
 
     if (RB_TYPE_P(v_connectionString, T_STRING) != 1) {
-        printf("Invalid connection string provided.\n");
+        DBG("Invalid connection string provided.\n");
         return raise_invalid_arguments_error();
     }
 
@@ -384,29 +487,29 @@ static VALUE rb_connect(int argc, VALUE *argv, VALUE self) {
 
     // If we're already connected/in session, return success immediately
     if (clientState == UA_CLIENTSTATE_SESSION || clientState == UA_CLIENTSTATE_SESSION_RENEWED) {
-        printf("Client already has active session (state: %d), skipping connection...\n", clientState);
+        DBG("Client already has active session (state: %d), skipping connection...\n", clientState);
         return Qnil;
     }
 
     // Only clear cached endpoint info if we're actually disconnected
     // This prevents disrupting active sessions
     if (isDisconnected) {
-        printf("Client is disconnected, clearing endpoint cache for fresh discovery...\n");
+        DBG("Client is disconnected, clearing endpoint cache for fresh discovery...\n");
         UA_EndpointDescription_clear(&config->endpoint);
         UA_UserTokenPolicy_clear(&config->userTokenPolicy);
         UA_String_clear(&config->securityPolicyUri);
     } else {
-        printf("Client is connecting, preserving endpoint configuration...\n");
+        DBG("Client is connecting, preserving endpoint configuration...\n");
     }
 
     bool useEncryption = !is_empty_or_nil(v_username) && !is_empty_or_nil(v_password) &&
                          !is_empty_or_nil(v_client_cert) && !is_empty_or_nil(v_private_key);
 
     if (useEncryption) {
-        printf("Setting up encrypted connection...\n");
-        printf("***CONNECTING***\n");
+        DBG("Setting up encrypted connection...\n");
+        DBG("***CONNECTING***\n");
         if (hasExistingSecurityPolicies) {
-            printf("Security policies already configured, skipping encryption setup...\n");
+            DBG("Security policies already configured, skipping encryption setup...\n");
 
             config->stateCallback = stateCallback;
             config->subscriptionInactivityCallback = subscriptionInactivityCallback;
@@ -415,7 +518,7 @@ static VALUE rb_connect(int argc, VALUE *argv, VALUE self) {
             // First-time encryption setup
             // Validate certificate and private key parameters
             if (RB_TYPE_P(v_client_cert, T_STRING) != 1 || RB_TYPE_P(v_private_key, T_STRING) != 1) {
-                printf("Invalid certificate or private key provided.\n");
+                DBG("Invalid certificate or private key provided.\n");
                 return raise_invalid_arguments_error();
             }
 
@@ -423,18 +526,18 @@ static VALUE rb_connect(int argc, VALUE *argv, VALUE self) {
             char *cert_pem = StringValueCStr(v_client_cert);
             char *key_pem = StringValueCStr(v_private_key);
 
-            printf("Converting PEM certificates to DER format...\n");
+            DBG("Converting PEM certificates to DER format...\n");
             UA_ByteString certificate = convertPemToDer(cert_pem, 0); // 0 = certificate
             UA_ByteString privateKey = convertPemToDer(key_pem, 1);   // 1 = private key
 
             if (certificate.data == NULL || privateKey.data == NULL) {
-                printf("Failed to convert certificates to DER format.\n");
+                DBG("Failed to convert certificates to DER format.\n");
                 if (certificate.data) UA_ByteString_clear(&certificate);
                 if (privateKey.data) UA_ByteString_clear(&privateKey);
                 return raise_invalid_arguments_error();
             }
 
-            printf("Configuring encryption...\n");
+            DBG("Configuring encryption...\n");
             status = UA_ClientConfig_setDefaultEncryption(config, certificate, privateKey,
                                                           NULL, 0, NULL, 0);
 
@@ -442,7 +545,7 @@ static VALUE rb_connect(int argc, VALUE *argv, VALUE self) {
             UA_ByteString_clear(&privateKey);
 
             if (status != UA_STATUSCODE_GOOD) {
-                printf("Failed to set encryption configuration: %s\n", UA_StatusCode_name(status));
+                DBG("Failed to set encryption configuration: %s\n", UA_StatusCode_name(status));
                 return raise_ua_status_error(status);
             }
 
@@ -450,19 +553,19 @@ static VALUE rb_connect(int argc, VALUE *argv, VALUE self) {
             config->subscriptionInactivityCallback = subscriptionInactivityCallback;
             config->clientContext = existing_ctx;
 
-            printf("Encryption configuration successful.\n");
+            DBG("Encryption configuration successful.\n");
         }
     } else {
-        printf("Setting up non-encrypted connection...\n");
+        DBG("Setting up non-encrypted connection...\n");
 
         if (!hasExistingSecurityPolicies) {
             status = UA_ClientConfig_setDefault(config);
             if (status != UA_STATUSCODE_GOOD) {
-                printf("Failed to set default configuration: %s\n", UA_StatusCode_name(status));
+                DBG("Failed to set default configuration: %s\n", UA_StatusCode_name(status));
                 return raise_ua_status_error(status);
             }
         } else {
-            printf("Security policies already exist, skipping default config setup...\n");
+            DBG("Security policies already exist, skipping default config setup...\n");
         }
 
         config->stateCallback = stateCallback;
@@ -478,23 +581,23 @@ static VALUE rb_connect(int argc, VALUE *argv, VALUE self) {
         const char *username = StringValueCStr(v_username);
         const char *password = StringValueCStr(v_password);
 
-        printf("Connecting with username/password authentication%s...\n", useEncryption ? " and encryption" : "");
+        DBG("Connecting with username/password authentication%s...\n", useEncryption ? " and encryption" : "");
 
         // Connect with username and password
         status = UA_Client_connect_username(client, connectionString, username, password);
     } else {
         // Anonymous authentication
-        printf("Connecting anonymously%s...\n", useEncryption ? " with encryption" : "");
+        DBG("Connecting anonymously%s...\n", useEncryption ? " with encryption" : "");
 
         // Connect anonymously
         status = UA_Client_connect(client, connectionString);
     }
 
     if (status == UA_STATUSCODE_GOOD) {
-        printf("Connection successful!\n");
+        DBG("Connection successful!\n");
         return Qnil;
     } else {
-        printf("Connection failed: %s\n", UA_StatusCode_name(status));
+        DBG("Connection failed: %s\n", UA_StatusCode_name(status));
         return raise_ua_status_error(status);
     }
 }
@@ -531,11 +634,11 @@ static VALUE rb_addMonitoredItem(VALUE self, VALUE v_subscriptionId, VALUE v_mon
                                               UA_TIMESTAMPSTORETURN_BOTH,
                                               monRequest, NULL, handler_dataChanged, NULL);
     if (monResponse.statusCode == UA_STATUSCODE_GOOD) {
-        // printf("Request to monitor field %hu:%s successful, id %u\n", monNsIndex, monNsName, monResponse.monitoredItemId);
+        // DBG("Request to monitor field %hu:%s successful, id %u\n", monNsIndex, monNsName, monResponse.monitoredItemId);
         UA_UInt32 monitoredItemId = monResponse.monitoredItemId;
         return UINT2NUM(monitoredItemId);
     } else {
-        // printf("Request to monitor field failed: %s\n", UA_StatusCode_name(monResponse.statusCode));
+        // DBG("Request to monitor field failed: %s\n", UA_StatusCode_name(monResponse.statusCode));
         return Qnil;
     }
 }
@@ -560,11 +663,11 @@ static VALUE rb_deleteMonitoredItem(VALUE self, VALUE v_subscriptionId, VALUE v_
     if (deleteResponse.responseHeader.serviceResult == UA_STATUSCODE_GOOD &&
         deleteResponse.resultsSize > 0 &&
         deleteResponse.results[0] == UA_STATUSCODE_GOOD) {
-        printf("Successfully deleted monitored item %u from subscription %u\n", monitoredItemId, subscriptionId);
+        DBG("Successfully deleted monitored item %u from subscription %u\n", monitoredItemId, subscriptionId);
         UA_DeleteMonitoredItemsResponse_clear(&deleteResponse);
         return Qtrue;
     } else {
-        printf("Failed to delete monitored item %u from subscription %u\n", monitoredItemId, subscriptionId);
+        DBG("Failed to delete monitored item %u from subscription %u\n", monitoredItemId, subscriptionId);
         UA_DeleteMonitoredItemsResponse_clear(&deleteResponse);
         return Qfalse;
     }
@@ -588,11 +691,11 @@ static VALUE rb_deleteSubscription(VALUE self, VALUE v_subscriptionId) {
     if (deleteResponse.responseHeader.serviceResult == UA_STATUSCODE_GOOD &&
         deleteResponse.resultsSize > 0 &&
         deleteResponse.results[0] == UA_STATUSCODE_GOOD) {
-        printf("Successfully deleted subscription %u\n", subscriptionId);
+        DBG("Successfully deleted subscription %u\n", subscriptionId);
         UA_DeleteSubscriptionsResponse_clear(&deleteResponse);
         return Qtrue;
     } else {
-        printf("Failed to delete subscription %u\n", subscriptionId);
+        DBG("Failed to delete subscription %u\n", subscriptionId);
         UA_DeleteSubscriptionsResponse_clear(&deleteResponse);
         return Qfalse;
     }
@@ -608,10 +711,10 @@ static VALUE rb_deleteAllSubscriptions(VALUE self) {
 
     if (status == UA_STATUSCODE_GOOD || status == UA_STATUSCODE_BADSUBSCRIPTIONIDINVALID) {
         // BADSUBSCRIPTIONIDINVALID means no subscriptions exist, which is also success for our purpose
-        printf("Successfully deleted all subscriptions\n");
+        DBG("Successfully deleted all subscriptions\n");
         return Qtrue;
     } else {
-        printf("Failed to delete all subscriptions: %s\n", UA_StatusCode_name(status));
+        DBG("Failed to delete all subscriptions: %s\n", UA_StatusCode_name(status));
         return Qfalse;
     }
 }
@@ -622,11 +725,16 @@ static VALUE rb_disconnect(VALUE self) {
     UA_Client *client = uclient->client;
 
     UA_StatusCode status = UA_Client_disconnect(client);
-    printf("***DISCONNECTING***\n");
+    DBG("***DISCONNECTING***\n");
     return RB_UINT2NUM(status);
 }
 
-static UA_StatusCode multiRead(UA_Client *client, const UA_NodeId *nodeId, UA_Variant *out, const long varsCount) {
+/* On failure, *failedIndex is set to the index of the offending node for a
+   per-node error, or left at -1 for a service/connection-level failure (so the
+   caller classifies it as a link problem rather than a node problem). The real
+   UA status code is returned instead of a synthesized BADUNEXPECTEDERROR. */
+static UA_StatusCode multiRead(UA_Client *client, const UA_NodeId *nodeId, UA_Variant *out, const long varsCount, long *failedIndex) {
+    *failedIndex = -1;
 
     UA_UInt16 rvSize = UA_TYPES[UA_TYPES_READVALUEID].memSize;
     UA_ReadValueId *rValues = UA_calloc(varsCount, rvSize);
@@ -643,50 +751,48 @@ static UA_StatusCode multiRead(UA_Client *client, const UA_NodeId *nodeId, UA_Va
     request.nodesToReadSize = varsCount;
 
     UA_ReadResponse response = UA_Client_Service_read(client, request);
-    UA_StatusCode retval = response.responseHeader.serviceResult;
-    if (retval == UA_STATUSCODE_GOOD) {
-        if (response.resultsSize == (size_t)varsCount)
-            retval = response.results[0].status;
-        else
-            retval = UA_STATUSCODE_BADUNEXPECTEDERROR;
-    }
 
-    if (retval != UA_STATUSCODE_GOOD) {
+    /* Service/connection-level failure: no per-node index. */
+    UA_StatusCode service = response.responseHeader.serviceResult;
+    if (service != UA_STATUSCODE_GOOD) {
         UA_ReadResponse_deleteMembers(&response);
         UA_free(rValues);
-        return retval;
+        return service;
     }
-
-    /* Set the StatusCode */
-    UA_DataValue *results = response.results;
 
     if (response.resultsSize != (size_t)varsCount) {
-        retval = UA_STATUSCODE_BADUNEXPECTEDERROR;
         UA_ReadResponse_deleteMembers(&response);
         UA_free(rValues);
-        return retval;
+        return UA_STATUSCODE_BADUNEXPECTEDERROR;
     }
 
-    for (int i = 0; i < varsCount; i++) {
+    UA_DataValue *results = response.results;
+
+    /* Per-node check: report which node failed and its real status code. */
+    for (long i = 0; i < varsCount; i++) {
         if ((results[i].hasStatus && results[i].status != UA_STATUSCODE_GOOD) || !results[i].hasValue) {
-            retval = UA_STATUSCODE_BADUNEXPECTEDERROR;
+            *failedIndex = i;
+            UA_StatusCode node = results[i].hasStatus ? results[i].status : UA_STATUSCODE_BADUNEXPECTEDERROR;
             UA_ReadResponse_deleteMembers(&response);
             UA_free(rValues);
-            return retval;
+            return node;
         }
     }
 
-    for (int i = 0; i < varsCount; i++) {
+    for (long i = 0; i < varsCount; i++) {
         out[i] = results[i].value;
         UA_Variant_init(&results[i].value);
     }
 
     UA_ReadResponse_deleteMembers(&response);
     UA_free(rValues);
-    return retval;
+    return UA_STATUSCODE_GOOD;
 }
 
-static UA_StatusCode multiWrite(UA_Client *client, const UA_NodeId *nodeId, const UA_Variant *in, const long varsSize) {
+/* On a per-node write failure, *failedIndex is set to the offending node and
+   its real status code is returned. Service-level failures leave it at -1. */
+static UA_StatusCode multiWrite(UA_Client *client, const UA_NodeId *nodeId, const UA_Variant *in, const long varsSize, long *failedIndex) {
+    *failedIndex = -1;
     UA_AttributeId attributeId = UA_ATTRIBUTEID_VALUE;
 
     UA_UInt16 wvSize = UA_TYPES[UA_TYPES_WRITEVALUE].memSize;
@@ -716,20 +822,13 @@ static UA_StatusCode multiWrite(UA_Client *client, const UA_NodeId *nodeId, cons
             for (size_t i = 0; i < wResp.resultsSize; i++) {
                 if (wResp.results[i] != UA_STATUSCODE_GOOD) {
                     retval = wResp.results[i];
-                    // printf("%s\n", "multiWrite: bad result found");
+                    *failedIndex = (long)i;
                     break;
                 }
             }
-
-            if (retval == UA_STATUSCODE_GOOD) {
-                // printf("%s\n", "multiWrite: all vars written");
-            }
         } else {
             retval = UA_STATUSCODE_BADUNEXPECTEDERROR;
-            // printf("%s\n", "multiWrite: bad resultsSize");
         }
-    } else {
-        // printf("%s\n", "multiWrite: bad write");
     }
 
     UA_WriteResponse_deleteMembers(&wResp);
@@ -743,7 +842,9 @@ static VALUE rb_readUaValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames) {
         return raise_invalid_arguments_error();
     }
 
-    Check_Type(v_aryNames, T_ARRAY);
+    if (RB_TYPE_P(v_aryNames, T_ARRAY) != 1) {
+        return raise_invalid_arguments_error();
+    }
     const long namesCount = RARRAY_LEN(v_aryNames);
 
     int nsIndex = FIX2INT(v_nsIndex);
@@ -762,6 +863,8 @@ static VALUE rb_readUaValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames) {
         VALUE v_name = rb_ary_entry(v_aryNames, i);
 
         if (RB_TYPE_P(v_name, T_STRING) != 1) {
+            UA_free(nodes);
+            UA_free(readValues);
             return raise_invalid_arguments_error();
         }
 
@@ -769,18 +872,15 @@ static VALUE rb_readUaValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames) {
         nodes[i] = UA_NODEID_STRING(nsIndex, name);
     }
 
-    UA_StatusCode status = multiRead(client, nodes, readValues, namesCount);
+    long failedIndex = -1;
+    UA_StatusCode status = multiRead(client, nodes, readValues, namesCount, &failedIndex);
 
     VALUE resultArray = Qnil;
 
     if (status == UA_STATUSCODE_GOOD) {
-        // printf("%s\n", "value read successful");
-
         resultArray = rb_ary_new2(namesCount);
 
         for (int i=0; i<namesCount; i++) {
-            // printf("the value is: %i\n", val);
-
             VALUE rubyVal = Qnil;
 
             if (UA_Variant_hasScalarType(&readValues[i], &UA_TYPES[UA_TYPES_INT16])) {
@@ -830,7 +930,7 @@ static VALUE rb_readUaValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames) {
         UA_free(nodes);
         UA_free(readValues);
 
-        return raise_ua_status_error(status);
+        return raise_ua_status(status, failedIndex);
     }
 
     /* Clean up */
@@ -848,7 +948,9 @@ static VALUE rb_readUaValuesNumeric(VALUE self, VALUE v_nsIndex, VALUE v_aryNode
         return raise_invalid_arguments_error();
     }
 
-    Check_Type(v_aryNodeIds, T_ARRAY);
+    if (RB_TYPE_P(v_aryNodeIds, T_ARRAY) != 1) {
+        return raise_invalid_arguments_error();
+    }
     const long nodeIdsCount = RARRAY_LEN(v_aryNodeIds);
 
     int nsIndex = FIX2INT(v_nsIndex);
@@ -876,7 +978,8 @@ static VALUE rb_readUaValuesNumeric(VALUE self, VALUE v_nsIndex, VALUE v_aryNode
         nodes[i] = UA_NODEID_NUMERIC(nsIndex, numericId);
     }
 
-    UA_StatusCode status = multiRead(client, nodes, readValues, nodeIdsCount);
+    long failedIndex = -1;
+    UA_StatusCode status = multiRead(client, nodes, readValues, nodeIdsCount, &failedIndex);
 
     VALUE resultArray = Qnil;
 
@@ -933,7 +1036,7 @@ static VALUE rb_readUaValuesNumeric(VALUE self, VALUE v_nsIndex, VALUE v_aryNode
         UA_free(nodes);
         UA_free(readValues);
 
-        return raise_ua_status_error(status);
+        return raise_ua_status(status, failedIndex);
     }
 
     /* Clean up */
@@ -946,13 +1049,32 @@ static VALUE rb_readUaValuesNumeric(VALUE self, VALUE v_nsIndex, VALUE v_aryNode
     return resultArray;
 }
 
+/* Free the parallel nodes/values buffers built by rb_writeUaValues before a
+   raise. Deleting members of yet-unbuilt (zeroed) variants is a safe no-op,
+   so the full count can always be passed. */
+static void free_write_buffers(UA_NodeId *nodes, UA_Variant *values, long count) {
+    if (values) {
+        for (long i = 0; i < count; i++) {
+            UA_Variant_deleteMembers(&values[i]);
+        }
+        UA_free(values);
+    }
+    if (nodes) {
+        UA_free(nodes);
+    }
+}
+
 static VALUE rb_writeUaValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames, VALUE v_aryNewValues, int uaType) {
     if (RB_TYPE_P(v_nsIndex, T_FIXNUM) != 1) {
         return raise_invalid_arguments_error();
     }
 
-    Check_Type(v_aryNames, T_ARRAY);
-    Check_Type(v_aryNewValues, T_ARRAY);
+    if (RB_TYPE_P(v_aryNames, T_ARRAY) != 1) {
+        return raise_invalid_arguments_error();
+    }
+    if (RB_TYPE_P(v_aryNewValues, T_ARRAY) != 1) {
+        return raise_invalid_arguments_error();
+    }
 
     const long namesCount = RARRAY_LEN(v_aryNames);
     const long valuesCount = RARRAY_LEN(v_aryNewValues);
@@ -978,6 +1100,7 @@ static VALUE rb_writeUaValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames, VAL
         VALUE v_newValue = rb_ary_entry(v_aryNewValues, i);
 
         if (RB_TYPE_P(v_name, T_STRING) != 1) {
+            free_write_buffers(nodes, values, namesCount);
             return raise_invalid_arguments_error();
         }
 
@@ -985,19 +1108,28 @@ static VALUE rb_writeUaValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames, VAL
         nodes[i] = UA_NODEID_STRING(nsIndex, name);
 
         if (uaType == UA_TYPES_UINT16) {
-            Check_Type(v_newValue, T_FIXNUM);
+            if (RB_TYPE_P(v_newValue, T_FIXNUM) != 1) {
+                free_write_buffers(nodes, values, namesCount);
+                return raise_invalid_arguments_error();
+            }
             UA_UInt16 newValue = NUM2USHORT(v_newValue);
             values[i].data = UA_malloc(sizeof(UA_UInt16));
             *(UA_UInt16*)values[i].data = newValue;
             values[i].type = &UA_TYPES[uaType];
         } else if (uaType == UA_TYPES_INT16) {
-            Check_Type(v_newValue, T_FIXNUM);
+            if (RB_TYPE_P(v_newValue, T_FIXNUM) != 1) {
+                free_write_buffers(nodes, values, namesCount);
+                return raise_invalid_arguments_error();
+            }
             UA_Int16 newValue = NUM2SHORT(v_newValue);
             values[i].data = UA_malloc(sizeof(UA_Int16));
             *(UA_Int16*)values[i].data = newValue;
             values[i].type = &UA_TYPES[uaType];
         } else if (uaType == UA_TYPES_UINT32) {
-            Check_Type(v_newValue, T_FIXNUM);
+            if (RB_TYPE_P(v_newValue, T_FIXNUM) != 1) {
+                free_write_buffers(nodes, values, namesCount);
+                return raise_invalid_arguments_error();
+            }
             UA_UInt32 newValue = NUM2UINT(v_newValue);
             values[i].data = UA_malloc(sizeof(UA_UInt32));
             *(UA_UInt32*)values[i].data = newValue;
@@ -1008,7 +1140,11 @@ static VALUE rb_writeUaValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames, VAL
 
             for (size_t j = 0; j < arrayLength; j++) {
                 VALUE element = rb_ary_entry(v_newValue, j);
-                Check_Type(element, T_FIXNUM);
+                if (RB_TYPE_P(element, T_FIXNUM) != 1) {
+                    UA_free(arrayData);
+                    free_write_buffers(nodes, values, namesCount);
+                    return raise_invalid_arguments_error();
+                }
                 arrayData[j] = NUM2INT(element);
             }
 
@@ -1016,7 +1152,10 @@ static VALUE rb_writeUaValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames, VAL
             values[i].arrayLength = arrayLength;
             values[i].type = &UA_TYPES[UA_TYPES_INT32];
         } else if (uaType == UA_TYPES_INT32) {
-            Check_Type(v_newValue, T_FIXNUM);
+            if (RB_TYPE_P(v_newValue, T_FIXNUM) != 1) {
+                free_write_buffers(nodes, values, namesCount);
+                return raise_invalid_arguments_error();
+            }
             UA_Int32 newValue = NUM2INT(v_newValue);
             values[i].data = UA_malloc(sizeof(UA_Int32));
             *(UA_Int32*)values[i].data = newValue;
@@ -1027,6 +1166,11 @@ static VALUE rb_writeUaValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames, VAL
 
             for (size_t j = 0; j < arrayLength; j++) {
                 VALUE element = rb_ary_entry(v_newValue, j);
+                if (!value_is_numeric(element)) {
+                    UA_free(arrayData);
+                    free_write_buffers(nodes, values, namesCount);
+                    return raise_invalid_arguments_error();
+                }
                 arrayData[j] = NUM2LL(element);
             }
 
@@ -1034,22 +1178,35 @@ static VALUE rb_writeUaValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames, VAL
             values[i].arrayLength = arrayLength;
             values[i].type = &UA_TYPES[UA_TYPES_INT64];
         } else if (uaType == UA_TYPES_INT64) {
+            if (!value_is_numeric(v_newValue)) {
+                free_write_buffers(nodes, values, namesCount);
+                return raise_invalid_arguments_error();
+            }
             UA_Int64 newValue = NUM2LL(v_newValue);
             values[i].data = UA_malloc(sizeof(UA_Int64));
             *(UA_Int64*)values[i].data = newValue;
             values[i].type = &UA_TYPES[uaType];
         } else if (uaType == UA_TYPES_FLOAT) {
+            if (!value_is_numeric(v_newValue)) {
+                free_write_buffers(nodes, values, namesCount);
+                return raise_invalid_arguments_error();
+            }
             UA_Float newValue = NUM2DBL(v_newValue);
             values[i].data = UA_malloc(sizeof(UA_Float));
             *(UA_Float*)values[i].data = newValue;
             values[i].type = &UA_TYPES[uaType];
         } else if (uaType == UA_TYPES_DOUBLE) {
+            if (!value_is_numeric(v_newValue)) {
+                free_write_buffers(nodes, values, namesCount);
+                return raise_invalid_arguments_error();
+            }
             UA_Double newValue = NUM2DBL(v_newValue);
             values[i].data = UA_malloc(sizeof(UA_Double));
             *(UA_Double*)values[i].data = newValue;
             values[i].type = &UA_TYPES[uaType];
         } else if (uaType == UA_TYPES_BOOLEAN) {
             if (RB_TYPE_P(v_newValue, T_TRUE) != 1 && RB_TYPE_P(v_newValue, T_FALSE) != 1) {
+                free_write_buffers(nodes, values, namesCount);
                 return raise_invalid_arguments_error();
             }
             UA_Boolean newValue = RTEST(v_newValue);
@@ -1057,44 +1214,38 @@ static VALUE rb_writeUaValues(VALUE self, VALUE v_nsIndex, VALUE v_aryNames, VAL
             *(UA_Boolean*)values[i].data = newValue;
             values[i].type = &UA_TYPES[UA_TYPES_BOOLEAN];
         } else if (uaType == UA_TYPES_STRING) {
-            Check_Type(v_newValue, T_STRING);
+            if (RB_TYPE_P(v_newValue, T_STRING) != 1) {
+                free_write_buffers(nodes, values, namesCount);
+                return raise_invalid_arguments_error();
+            }
             UA_String newValue = UA_STRING(StringValueCStr(v_newValue));
             values[i].data = UA_malloc(sizeof(UA_String));
             UA_String_copy(&newValue, (UA_String*)values[i].data);
             values[i].type = &UA_TYPES[uaType];
         } else if (uaType == UA_TYPES_BYTE) {
-            Check_Type(v_newValue, T_FIXNUM);
+            if (RB_TYPE_P(v_newValue, T_FIXNUM) != 1) {
+                free_write_buffers(nodes, values, namesCount);
+                return raise_invalid_arguments_error();
+            }
             UA_Byte newValue = (UA_Byte)NUM2UINT(v_newValue);
             values[i].data = UA_malloc(sizeof(UA_Byte));
             *(UA_Byte*)values[i].data = newValue;
             values[i].type = &UA_TYPES[uaType];
         } else {
-            rb_raise(cError, "Unsupported type");
+            free_write_buffers(nodes, values, namesCount);
+            return raise_client_error(cArgumentError, "Unsupported type");
         }
     }
 
-    UA_StatusCode status = multiWrite(client, nodes, values, namesCount);
+    long failedIndex = -1;
+    UA_StatusCode status = multiWrite(client, nodes, values, namesCount, &failedIndex);
 
-    if (status == UA_STATUSCODE_GOOD) {
-        // printf("%s\n", "value write successful");
-    } else {
-        /* Clean up */
-        for (int i=0; i<namesCount; i++) {
-            UA_Variant_deleteMembers(&values[i]);
-        }
-        UA_free(nodes);
-        UA_free(values);
-
-        return raise_ua_status_error(status);
+    if (status != UA_STATUSCODE_GOOD) {
+        free_write_buffers(nodes, values, namesCount);
+        return raise_ua_status(status, failedIndex);
     }
 
-    /* Clean up */
-    for (int i=0; i<namesCount; i++) {
-        UA_Variant_deleteMembers(&values[i]);
-    }
-    UA_free(nodes);
-    UA_free(values);
-
+    free_write_buffers(nodes, values, namesCount);
     return Qnil;
 }
 
@@ -1137,7 +1288,10 @@ static VALUE rb_writeUaValue(VALUE self, VALUE v_nsIndex, VALUE v_name, VALUE v_
 
         for (size_t i = 0; i < arrayLength; i++) {
             VALUE element = rb_ary_entry(v_newValue, i);
-            Check_Type(element, T_FIXNUM);
+            if (RB_TYPE_P(element, T_FIXNUM) != 1) {
+                UA_free(arrayData);
+                return raise_invalid_arguments_error();
+            }
             arrayData[i] = NUM2INT(element);
         }
 
@@ -1155,7 +1309,10 @@ static VALUE rb_writeUaValue(VALUE self, VALUE v_nsIndex, VALUE v_name, VALUE v_
 
         for (size_t i = 0; i < arrayLength; i++) {
             VALUE element = rb_ary_entry(v_newValue, i);
-            Check_Type(element, T_FIXNUM);
+            if (RB_TYPE_P(element, T_FIXNUM) != 1) {
+                UA_free(arrayData);
+                return raise_invalid_arguments_error();
+            }
             arrayData[i] = NUM2UINT(element);
         }
 
@@ -1173,6 +1330,10 @@ static VALUE rb_writeUaValue(VALUE self, VALUE v_nsIndex, VALUE v_name, VALUE v_
 
         for (size_t i = 0; i < arrayLength; i++) {
             VALUE element = rb_ary_entry(v_newValue, i);
+            if (!value_is_numeric(element)) {
+                UA_free(arrayData);
+                return raise_invalid_arguments_error();
+            }
             arrayData[i] = NUM2LL(element);
         }
 
@@ -1180,16 +1341,25 @@ static VALUE rb_writeUaValue(VALUE self, VALUE v_nsIndex, VALUE v_name, VALUE v_
         value.arrayLength = arrayLength;
         value.type = &UA_TYPES[UA_TYPES_INT64];
     } else if (uaType == UA_TYPES_INT64) {
+        if (!value_is_numeric(v_newValue)) {
+            return raise_invalid_arguments_error();
+        }
         UA_Int64 newValue = NUM2LL(v_newValue);
         value.data = UA_malloc(sizeof(UA_Int64));
         *(UA_Int64*)value.data = newValue;
         value.type = &UA_TYPES[UA_TYPES_INT64];
     } else if (uaType == UA_TYPES_FLOAT) {
+        if (!value_is_numeric(v_newValue)) {
+            return raise_invalid_arguments_error();
+        }
         UA_Float newValue = NUM2DBL(v_newValue);
         value.data = UA_malloc(sizeof(UA_Float));
         *(UA_Float*)value.data = newValue;
         value.type = &UA_TYPES[UA_TYPES_FLOAT];
     } else if (uaType == UA_TYPES_DOUBLE) {
+        if (!value_is_numeric(v_newValue)) {
+            return raise_invalid_arguments_error();
+        }
         UA_Double newValue = NUM2DBL(v_newValue);
         value.data = UA_malloc(sizeof(UA_Double));
         *(UA_Double*)value.data = newValue;
@@ -1205,7 +1375,9 @@ static VALUE rb_writeUaValue(VALUE self, VALUE v_nsIndex, VALUE v_name, VALUE v_
         UA_String_copy(&newValue, (UA_String*)value.data);
         value.type = &UA_TYPES[UA_TYPES_STRING];
     } else if (uaType == UA_TYPES_BYTE) {
-        Check_Type(v_newValue, T_FIXNUM);
+        if (RB_TYPE_P(v_newValue, T_FIXNUM) != 1) {
+            return raise_invalid_arguments_error();
+        }
         UA_Byte newValue = (UA_Byte)NUM2UINT(v_newValue);
         value.data = UA_malloc(sizeof(UA_Byte));
         *(UA_Byte*)value.data = newValue;
@@ -1217,13 +1389,14 @@ static VALUE rb_writeUaValue(VALUE self, VALUE v_nsIndex, VALUE v_name, VALUE v_
         value.type = &UA_TYPES[UA_TYPES_DATETIME];
     }
     else {
-        rb_raise(cError, "Unsupported type");
+        UA_Variant_deleteMembers(&value);
+        return raise_client_error(cArgumentError, "Unsupported type");
     }
 
     UA_StatusCode status = UA_Client_writeValueAttribute(client, UA_NODEID_STRING(nsIndex, name), &value);
 
     if (status == UA_STATUSCODE_GOOD) {
-        // printf("%s\n", "value write successful");
+        // DBG("%s\n", "value write successful");
     } else {
         /* Clean up */
         UA_Variant_deleteMembers(&value);
@@ -1361,7 +1534,7 @@ static VALUE rb_readUaValue(VALUE self, VALUE v_nsIndex, VALUE v_name, int type)
     UA_StatusCode status = UA_Client_readValueAttribute(client, UA_NODEID_STRING(nsIndex, name), &value);
 
     if (status == UA_STATUSCODE_GOOD) {
-        // printf("%s\n", "value read successful");
+        // DBG("%s\n", "value read successful");
     } else {
         /* Clean up */
         UA_Variant_deleteMembers(&value);
@@ -1372,11 +1545,11 @@ static VALUE rb_readUaValue(VALUE self, VALUE v_nsIndex, VALUE v_name, int type)
 
     if (type == UA_TYPES_INT16 && UA_Variant_hasScalarType(&value, &UA_TYPES[UA_TYPES_INT16])) {
         UA_Int16 val =*(UA_Int16*)value.data;
-        // printf("the value is: %i\n", val);
+        // DBG("the value is: %i\n", val);
         result = INT2FIX(val);
     } else if (type == UA_TYPES_UINT16 && UA_Variant_hasScalarType(&value, &UA_TYPES[UA_TYPES_UINT16])) {
         UA_UInt16 val =*(UA_UInt16*)value.data;
-        // printf("the value is: %i\n", val);
+        // DBG("the value is: %i\n", val);
         result = INT2FIX(val);
     } else if (type == UA_TYPES_INT32 && UA_Variant_hasArrayType(&value, &UA_TYPES[UA_TYPES_INT32])) {
         size_t arrayLength = value.arrayLength;
@@ -1438,8 +1611,8 @@ static VALUE rb_readUaValue(VALUE self, VALUE v_nsIndex, VALUE v_name, int type)
         UA_DateTime val = *(UA_DateTime*)value.data;
         result = toRubyTime(val);
     } else {
-        rb_raise(cError, "UA type mismatch");
-        return Qnil;
+        UA_Variant_deleteMembers(&value);
+        return raise_client_error(cTypeMismatchError, "UA type mismatch");
     }
 
     /* Clean up */
@@ -1509,7 +1682,9 @@ static VALUE rb_readInt64Values(VALUE self, VALUE v_nsIndex, VALUE v_aryNames) {
         return raise_invalid_arguments_error();
     }
 
-    Check_Type(v_aryNames, T_ARRAY);
+    if (RB_TYPE_P(v_aryNames, T_ARRAY) != 1) {
+        return raise_invalid_arguments_error();
+    }
     const long namesCount = RARRAY_LEN(v_aryNames);
 
     int nsIndex = FIX2INT(v_nsIndex);
@@ -1528,6 +1703,8 @@ static VALUE rb_readInt64Values(VALUE self, VALUE v_nsIndex, VALUE v_aryNames) {
         VALUE v_name = rb_ary_entry(v_aryNames, i);
 
         if (RB_TYPE_P(v_name, T_STRING) != 1) {
+            UA_free(nodes);
+            UA_free(readValues);
             return raise_invalid_arguments_error();
         }
 
@@ -1535,7 +1712,8 @@ static VALUE rb_readInt64Values(VALUE self, VALUE v_nsIndex, VALUE v_aryNames) {
         nodes[i] = UA_NODEID_STRING(nsIndex, name);
     }
 
-    UA_StatusCode status = multiRead(client, nodes, readValues, namesCount);
+    long failedIndex = -1;
+    UA_StatusCode status = multiRead(client, nodes, readValues, namesCount, &failedIndex);
 
     VALUE resultArray = Qnil;
 
@@ -1549,8 +1727,12 @@ static VALUE rb_readInt64Values(VALUE self, VALUE v_nsIndex, VALUE v_aryNames) {
                 UA_Int64 val = *(UA_Int64*)readValues[i].data;
                 rubyVal = LL2NUM(val);
             } else {
-                rb_raise(cError, "UA type mismatch - expected INT64");
-                return Qnil;
+                for (int k=0; k<namesCount; k++) {
+                    UA_Variant_deleteMembers(&readValues[k]);
+                }
+                UA_free(nodes);
+                UA_free(readValues);
+                return raise_client_error(cTypeMismatchError, "UA type mismatch - expected INT64");
             }
 
             rb_ary_push(resultArray, rubyVal);
@@ -1563,7 +1745,7 @@ static VALUE rb_readInt64Values(VALUE self, VALUE v_nsIndex, VALUE v_aryNames) {
         UA_free(nodes);
         UA_free(readValues);
 
-        return raise_ua_status_error(status);
+        return raise_ua_status(status, failedIndex);
     }
 
     /* Clean up */
@@ -1587,6 +1769,27 @@ static VALUE rb_get_human_UA_StatusCode(VALUE self, VALUE v_code) {
         return rb_str_export_locale(rb_str_new_cstr(name));
     } else {
         return raise_invalid_arguments_error();
+    }
+}
+
+/* OPCUAClient.classify_status_code(code) ->
+   :good | :uncertain | :connection | :node | :type | :protocol
+   Exposes the same categorizer used to pick exception subclasses, so a
+   consumer can map raw status codes before adopting the subclasses. The top
+   two severity bits cover Good/Uncertain; Bad codes go through status_category. */
+static VALUE rb_classify_status_code(VALUE self, VALUE v_code) {
+    if (!value_is_integer(v_code)) {
+        return raise_invalid_arguments_error();
+    }
+    UA_StatusCode s = NUM2UINT(v_code);
+    UA_UInt32 severity = s & 0xC0000000;       /* 0x0=Good, 0x40=Uncertain, 0x80=Bad */
+    if (severity == 0x00000000) return ID2SYM(rb_intern("good"));
+    if (severity == 0x40000000) return ID2SYM(rb_intern("uncertain"));
+    switch (status_category(s)) {
+        case CAT_CONNECTION: return ID2SYM(rb_intern("connection"));
+        case CAT_NODE:       return ID2SYM(rb_intern("node"));
+        case CAT_TYPE:       return ID2SYM(rb_intern("type"));
+        default:             return ID2SYM(rb_intern("protocol"));
     }
 }
 
@@ -1633,8 +1836,10 @@ static void defineStateContants(VALUE mOPCUAClient) {
 void Init_opcua_client()
 {
 #ifdef UA_ENABLE_SUBSCRIPTIONS
-    // printf("%s\n", "ok! opcua-client-ruby built with subscriptions enabled.");
+    // DBG("%s\n", "ok! opcua-client-ruby built with subscriptions enabled.");
 #endif
+
+    g_debug = getenv("OPCUA_CLIENT_DEBUG") != NULL;
 
     mOPCUAClient = rb_const_get(rb_cObject, rb_intern("OPCUAClient"));
     rb_global_variable(&mOPCUAClient);
@@ -1642,6 +1847,26 @@ void Init_opcua_client()
 
     cError = rb_define_class_under(mOPCUAClient, "Error", rb_eStandardError);
     rb_global_variable(&cError);
+
+    /* Classified subclasses of Error (every existing `rescue OPCUAClient::Error`
+       still catches them all). See status_category() for the mapping. */
+    cConnectionError = rb_define_class_under(mOPCUAClient, "ConnectionError", cError);
+    rb_global_variable(&cConnectionError);
+    cNodeError = rb_define_class_under(mOPCUAClient, "NodeError", cError);
+    rb_global_variable(&cNodeError);
+    cTypeMismatchError = rb_define_class_under(mOPCUAClient, "TypeMismatchError", cError);
+    rb_global_variable(&cTypeMismatchError);
+    cProtocolError = rb_define_class_under(mOPCUAClient, "ProtocolError", cError);
+    rb_global_variable(&cProtocolError);
+    cArgumentError = rb_define_class_under(mOPCUAClient, "ArgumentError", cError);
+    rb_global_variable(&cArgumentError);
+
+    /* Structured data carried on every raised error (readers on the base class,
+       inherited by all subclasses). */
+    rb_define_attr(cError, "status_code", 1, 0);  /* Integer UA status, or nil for client-side errors */
+    rb_define_attr(cError, "status_name", 1, 0);  /* e.g. "BadConnectionClosed", or a client message */
+    rb_define_attr(cError, "node_index", 1, 0);   /* Integer index of failing node in a multi_* call, else nil */
+
     cClient = rb_define_class_under(mOPCUAClient, "Client", rb_cObject);
     rb_global_variable(&cClient);
 
@@ -1719,4 +1944,5 @@ void Init_opcua_client()
     rb_define_method(cClient, "delete_all_subscriptions", rb_deleteAllSubscriptions, 0);
 
     rb_define_singleton_method(mOPCUAClient, "human_status_code", rb_get_human_UA_StatusCode, 1);
+    rb_define_singleton_method(mOPCUAClient, "classify_status_code", rb_classify_status_code, 1);
 }

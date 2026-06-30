@@ -35,6 +35,18 @@ static UA_NodeId addVariableUnder(UA_Server *server, UA_Int16 nsId, int type, co
     } else if (type == UA_TYPES_STRING) {
         UA_String *initialValue = (UA_String*)defaultValue;
         UA_Variant_setScalar(&attr.value, initialValue, &UA_TYPES[type]);
+    } else if (type == UA_TYPES_INT64) {
+        UA_Int64 initialValue = *(UA_Int64*)defaultValue;
+        UA_Variant_setScalar(&attr.value, &initialValue, &UA_TYPES[type]);
+    } else if (type == UA_TYPES_DOUBLE) {
+        UA_Double initialValue = *(UA_Double*)defaultValue;
+        UA_Variant_setScalar(&attr.value, &initialValue, &UA_TYPES[type]);
+    } else if (type == UA_TYPES_BYTE) {
+        UA_Byte initialValue = *(UA_Byte*)defaultValue;
+        UA_Variant_setScalar(&attr.value, &initialValue, &UA_TYPES[type]);
+    } else if (type == UA_TYPES_DATETIME) {
+        UA_DateTime initialValue = *(UA_DateTime*)defaultValue;
+        UA_Variant_setScalar(&attr.value, &initialValue, &UA_TYPES[type]);
     } else {
         throw "type not supported";
     }
@@ -91,6 +103,59 @@ static void addVariableString(UA_Server *server, UA_Int16 nsId, int type, const 
     addVariableV2(server, nsId, type, variable, &defaultValue);
 }
 
+static void addVariableInt64(UA_Server *server, UA_Int16 nsId, const char *variable, UA_Int64 defaultValue) {
+    addVariableV2(server, nsId, UA_TYPES_INT64, variable, &defaultValue);
+}
+
+static void addVariableDouble(UA_Server *server, UA_Int16 nsId, const char *variable, UA_Double defaultValue) {
+    addVariableV2(server, nsId, UA_TYPES_DOUBLE, variable, &defaultValue);
+}
+
+static void addVariableByte(UA_Server *server, UA_Int16 nsId, const char *variable, UA_Byte defaultValue) {
+    addVariableV2(server, nsId, UA_TYPES_BYTE, variable, &defaultValue);
+}
+
+static void addVariableTime(UA_Server *server, UA_Int16 nsId, const char *variable, UA_DateTime defaultValue) {
+    addVariableV2(server, nsId, UA_TYPES_DATETIME, variable, &defaultValue);
+}
+
+// Array-valued node (valueRank ANY so the client can write a scalar or an array).
+static void addArrayVariable(UA_Server *server, UA_Int16 nsId, int type, const char *variable, void *data, size_t len) {
+    UA_VariableAttributes attr = UA_VariableAttributes_default;
+    UA_Variant_setArray(&attr.value, data, len, &UA_TYPES[type]);
+    attr.valueRank = UA_VALUERANK_ANY;
+    attr.dataType = UA_TYPES[type].typeId;
+    attr.accessLevel = UA_ACCESSLEVELMASK_READ | UA_ACCESSLEVELMASK_WRITE;
+    attr.displayName = UA_LOCALIZEDTEXT((char*) "en-US", (char*) variable);
+
+    UA_NodeId nodeId = UA_NODEID_STRING(nsId, (char*) variable);
+    UA_QualifiedName qn = UA_QUALIFIEDNAME(nsId, (char*) variable);
+    UA_NodeId parentNodeId = UA_NODEID_NUMERIC(0, UA_NS0ID_OBJECTSFOLDER);
+    UA_NodeId referenceTypeId = UA_NODEID_NUMERIC(0, UA_NS0ID_ORGANIZES);
+    UA_NodeId typeDefinition = UA_NODEID_NUMERIC(0, UA_NS0ID_BASEDATAVARIABLETYPE);
+    UA_Server_addVariableNode(server, nodeId, parentNodeId, referenceTypeId, qn,
+                              typeDefinition, attr, NULL, NULL);
+}
+
+// Numeric-id node (for multi_read_numeric coverage).
+static void addNumericInt32(UA_Server *server, UA_Int16 nsId, UA_UInt32 numericId, UA_Int32 defaultValue) {
+    UA_VariableAttributes attr = UA_VariableAttributes_default;
+    UA_Variant_setScalar(&attr.value, &defaultValue, &UA_TYPES[UA_TYPES_INT32]);
+    attr.dataType = UA_TYPES[UA_TYPES_INT32].typeId;
+    attr.accessLevel = UA_ACCESSLEVELMASK_READ | UA_ACCESSLEVELMASK_WRITE;
+    char nm[32];
+    sprintf(nm, "num_%u", numericId);
+    attr.displayName = UA_LOCALIZEDTEXT((char*) "en-US", nm);
+
+    UA_NodeId nodeId = UA_NODEID_NUMERIC(nsId, numericId);
+    UA_QualifiedName qn = UA_QUALIFIEDNAME(nsId, nm);
+    UA_NodeId parentNodeId = UA_NODEID_NUMERIC(0, UA_NS0ID_OBJECTSFOLDER);
+    UA_NodeId referenceTypeId = UA_NODEID_NUMERIC(0, UA_NS0ID_ORGANIZES);
+    UA_NodeId typeDefinition = UA_NODEID_NUMERIC(0, UA_NS0ID_BASEDATAVARIABLETYPE);
+    UA_Server_addVariableNode(server, nodeId, parentNodeId, referenceTypeId, qn,
+                              typeDefinition, attr, NULL, NULL);
+}
+
 UA_Boolean running = true;
 static void signalHandler(int signum) {
     UA_LOG_INFO(UA_Log_Stdout, UA_LOGCATEGORY_SERVER, "Signal received: %i", signum);
@@ -122,19 +187,41 @@ static void addVariables(UA_Server *server) {
     addVariableFloat(server, ns5Id, UA_TYPES_FLOAT, "float_c", 123.222);
     addVariableString(server, ns5Id, UA_TYPES_STRING, "string_a", UA_STRING(""));
     addVariableString(server, ns5Id, UA_TYPES_STRING, "string_b", UA_STRING("Example text"));
+
+    // 64-bit ints (values intentionally beyond the int32 range), doubles, bytes, time
+    addVariableInt64(server, ns5Id, "int64_a", 0);
+    addVariableInt64(server, ns5Id, "int64_b", -5000000000LL);
+    addVariableInt64(server, ns5Id, "int64_c", 5000000000LL);
+    addVariableDouble(server, ns5Id, "double_a", 0);
+    addVariableDouble(server, ns5Id, "double_b", -123456.789);
+    addVariableDouble(server, ns5Id, "double_c", 123456.789);
+    addVariableByte(server, ns5Id, "byte_a", 0);
+    addVariableByte(server, ns5Id, "byte_b", 255);
+    addVariableTime(server, ns5Id, "time_a", 0);
+
+    // Array/list nodes (valueRank ANY)
+    static UA_Int32 int32list_init[3] = {0, 0, 0};
+    addArrayVariable(server, ns5Id, UA_TYPES_INT32, "int32list_a", int32list_init, 3);
+    static UA_UInt32 uint32list_init[3] = {0, 0, 0};
+    addArrayVariable(server, ns5Id, UA_TYPES_UINT32, "uint32list_a", uint32list_init, 3);
+    static UA_Int64 int64list_init[4] = {0, 0, 0, 0};
+    addArrayVariable(server, ns5Id, UA_TYPES_INT64, "int64list_a", int64list_init, 4);
+
+    // Numeric node id (for multi_read_numeric)
+    addNumericInt32(server, ns5Id, 5001, 4242);
 }
 
 int main(void) {
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);
 
-    UA_ServerConfig *config = UA_ServerConfig_new_default();
-    UA_Server *server = UA_Server_new(config);
+    // open62541 1.0 server bootstrap (the server owns its config).
+    UA_Server *server = UA_Server_new();
+    UA_ServerConfig_setDefault(UA_Server_getConfig(server));
     addVariables(server);
 
     UA_StatusCode retval = UA_Server_run(server, &running);
 
     UA_Server_delete(server);
-    UA_ServerConfig_delete(config);
     return (int)retval;
 }

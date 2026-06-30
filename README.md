@@ -92,7 +92,65 @@ All methods raise OPCUAClient::Error if unsuccessful.
 ### Available methods - misc:
 
 * ```client.state => Fixnum``` - client internal state
-* ```OPCUAClient::Client.human_status_code(Fixnum status) => String``` - returns human status for status
+* ```OPCUAClient.human_status_code(Fixnum status) => String``` - human-readable name for a UA status code
+* ```OPCUAClient.classify_status_code(Fixnum status) => Symbol``` - `:good | :uncertain | :connection | :node | :type | :protocol`
+
+## Error handling
+
+Every read/write/connect failure raises an `OPCUAClient::Error`. The exception
+is one of the following subclasses, so you can tell *what kind* of failure it
+was — and each instance also carries structured data.
+
+```
+OPCUAClient::Error  (< StandardError)
+├── OPCUAClient::ConnectionError   # link/session/channel/transport down — the server is unreachable
+├── OPCUAClient::NodeError         # addressing: unknown/invalid node id, bad attribute, bad index range
+├── OPCUAClient::TypeMismatchError # value/type problem (server BadTypeMismatch, or a wrong-type read)
+├── OPCUAClient::ProtocolError     # everything else "Bad…" (BadUnexpectedError, BadInternalError, …)
+└── OPCUAClient::ArgumentError     # caller passed wrong Ruby args (NOT Ruby's ::ArgumentError)
+```
+
+Because they all inherit from `OPCUAClient::Error`, existing `rescue
+OPCUAClient::Error` keeps catching everything. The subclasses are purely
+additive — they let you branch on the *category* of failure (e.g. only a
+`ConnectionError` should be treated as "device offline").
+
+Each error exposes:
+
+* ```error.status_code => Integer``` - the raw `UA_StatusCode`, or `nil` for client-side errors (bad args, wrong-type read)
+* ```error.status_name => String``` - e.g. `"BadNodeIdUnknown"`, or the client-side message
+* ```error.node_index  => Integer``` - index of the failing node in a `multi_*` call, otherwise `nil`
+
+Convenience predicates: `error.connection?`, `error.node?`,
+`error.type_mismatch?`, `error.protocol?`, `error.argument?`.
+
+```ruby
+begin
+  client.multi_read(5, %w[temp_ok renamed_node pressure_ok])
+rescue OPCUAClient::ConnectionError => e
+  # the only category that means "device unreachable"
+  notify_offline!(e.status_name)
+rescue OPCUAClient::NodeError => e
+  # a node is unknown/renamed — a schema problem, not the network
+  logger.error("bad node at index #{e.node_index}: #{e.status_name}")
+rescue OPCUAClient::Error => e
+  # catch-all still works for everything
+  logger.error("opcua failure: #{e.status_name} (#{e.status_code})")
+end
+```
+
+`OPCUAClient.classify_status_code(code)` exposes the same categorizer for a raw
+status code (covering `:good`/`:uncertain` too), so a consumer can map codes
+without rescuing.
+
+> **Known sharp edge:** `multi_read` returns `nil` in a result slot for a value
+> whose UA type the gem does not decode (the read itself succeeded). A `nil`
+> there means "undecoded", not "healthy" — don't treat it as a valid reading.
+
+### Logging
+
+The extension is silent by default. Set the `OPCUA_CLIENT_DEBUG` environment
+variable (to any value) to print connection/diagnostic chatter to stdout.
 
 ## Subscriptions and monitoring
 
