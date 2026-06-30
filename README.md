@@ -48,6 +48,7 @@ end
 ### Available methods - connection:
 
 * ```client.connect(String url)``` - raises OPCUAClient::Error if unsuccessful
+* ``` client.connect(String url, String username, String password, String client_cert, String private_key)``` - authorized connection with username and password, with encryption enabled
 * ```client.disconnect => Fixnum``` - returns status
 
 ### Available methods - reads and writes:
@@ -59,29 +60,97 @@ All methods raise OPCUAClient::Error if unsuccessful.
 * ```client.read_int32(Fixnum ns, String name) => Fixnum```
 * ```client.read_uint32(Fixnum ns, String name) => Fixnum```
 * ```client.read_float(Fixnum ns, String name) => Float```
+* ```client.read_double(Fixnum ns, String name) => Double```
 * ```client.read_boolean(Fixnum ns, String name) => true/false```
 * ```client.read_string(Fixnum ns, String name) => String```
+* ```client.read_byte(Fixnum ns, String name) => Byte```
+* ```client.read_uint32_list(Fixnum ns, String name) => Array[Fixnum]```
+* ```client.read_int32_list(Fixnum ns, String name) => Array[Fixnum]```
 * ```client.multi_read(Fixnum ns, Array[String] names) => Array values```
 * ```client.write_int16(Fixnum ns, String name, Fixnum value)```
 * ```client.write_uint16(Fixnum ns, String name, Fixnum value)```
 * ```client.write_int32(Fixnum ns, String name, Fixnum value)```
 * ```client.write_uint32(Fixnum ns, String name, Fixnum value)```
 * ```client.write_float(Fixnum ns, String name, Float value)```
+* ```client.write_double(Fixnum ns, String name, Double value)```
 * ```client.write_boolean(Fixnum ns, String name, bool value)```
 * ```client.write_string(Fixnum ns, String name, String value)```
+* ```client.write_uint32_list(Fixnum ns, String name, Array[Fixnum] value)```
+* ```client.write_int32_list(Fixnum ns, String name, Array[Fixnum] value)```
 * ```client.multi_write_int16(Fixnum ns, Array[String] names, Array[Fixnum] values)```
 * ```client.multi_write_uint16(Fixnum ns, Array[String] names, Array[Fixnum] values)```
 * ```client.multi_write_int32(Fixnum ns, Array[String] names, Array[Fixnum] values)```
 * ```client.multi_write_uint32(Fixnum ns, Array[String] names, Array[Fixnum] values)```
 * ```client.multi_write_float(Fixnum ns, Array[String] names, Array[Float] values)```
+* ```client.multi_write_double(Fixnum ns, Array[String] names, Array[Double] values)```
 * ```client.multi_write_boolean(Fixnum ns, Array[String] names, Array[bool] values)```
 * ```client.multi_write_string(Fixnum ns, Array[String] names, Array[String] values)```
+* ```client.multi_write_byte(Fixnum ns, Array[String] names, Array[Byte] values)```
+* ```client.multi_write_int32_list(Fixnum ns, Array[String] names, Array[Array[Fixnum]] values)```
+
 
 ### Available methods - misc:
 
 * ```client.state => Fixnum``` - client internal state
-* ```client.human_state => String``` - human readable client internal state
-* ```OPCUAClient::Client.human_status_code(Fixnum status) => String``` - returns human status for status
+* ```OPCUAClient.human_status_code(Fixnum status) => String``` - human-readable name for a UA status code
+* ```OPCUAClient.classify_status_code(Fixnum status) => Symbol``` - `:good | :uncertain | :connection | :node | :type | :protocol`
+
+## Error handling
+
+Every read/write/connect failure raises an `OPCUAClient::Error`. The exception
+is one of the following subclasses, so you can tell *what kind* of failure it
+was — and each instance also carries structured data.
+
+```
+OPCUAClient::Error  (< StandardError)
+├── OPCUAClient::ConnectionError   # link/session/channel/transport down — the server is unreachable
+├── OPCUAClient::NodeError         # addressing: unknown/invalid node id, bad attribute, bad index range
+├── OPCUAClient::TypeMismatchError # value/type problem (server BadTypeMismatch, or a wrong-type read)
+├── OPCUAClient::ProtocolError     # everything else "Bad…" (BadUnexpectedError, BadInternalError, …)
+└── OPCUAClient::ArgumentError     # caller passed wrong Ruby args (NOT Ruby's ::ArgumentError)
+```
+
+Because they all inherit from `OPCUAClient::Error`, existing `rescue
+OPCUAClient::Error` keeps catching everything. The subclasses are purely
+additive — they let you branch on the *category* of failure (e.g. only a
+`ConnectionError` should be treated as "device offline").
+
+Each error exposes:
+
+* ```error.status_code => Integer``` - the raw `UA_StatusCode`, or `nil` for client-side errors (bad args, wrong-type read)
+* ```error.status_name => String``` - e.g. `"BadNodeIdUnknown"`, or the client-side message
+* ```error.node_index  => Integer``` - index of the failing node in a `multi_*` call, otherwise `nil`
+
+Convenience predicates: `error.connection?`, `error.node?`,
+`error.type_mismatch?`, `error.protocol?`, `error.argument?`.
+
+```ruby
+begin
+  client.multi_read(5, %w[temp_ok renamed_node pressure_ok])
+rescue OPCUAClient::ConnectionError => e
+  # the only category that means "device unreachable"
+  notify_offline!(e.status_name)
+rescue OPCUAClient::NodeError => e
+  # a node is unknown/renamed — a schema problem, not the network
+  logger.error("bad node at index #{e.node_index}: #{e.status_name}")
+rescue OPCUAClient::Error => e
+  # catch-all still works for everything
+  logger.error("opcua failure: #{e.status_name} (#{e.status_code})")
+end
+```
+
+`OPCUAClient.classify_status_code(code)` exposes the same categorizer for a raw
+status code (covering `:good`/`:uncertain` too), so a consumer can map codes
+without rescuing.
+
+> **Known sharp edge:** `multi_read` returns `nil` in a result slot for a value
+> whose UA type the gem does not decode (the read itself succeeded). A `nil`
+> there means "undecoded", not "healthy" — don't treat it as a valid reading.
+
+### Logging
+
+The extension is silent by default. Set the `OPCUA_CLIENT_DEBUG` environment
+variable (to any value) to print connection/diagnostic chatter to stdout.
 
 ## Subscriptions and monitoring
 
